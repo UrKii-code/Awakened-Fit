@@ -1,0 +1,6 @@
+{
+  "name": "Awakened Fit",
+  "description": "Mobile-first fitness RPG platform transforming real-world physical workouts into persistent Hunter character progression, attributes, ranks, and quests.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
