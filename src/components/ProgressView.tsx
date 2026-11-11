@@ -52,8 +52,8 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
   const [inputDate, setInputDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [inputNotes, setInputNotes] = useState<string>('');
 
-  // Height / BMI inputs
-  const [userHeightCm, setUserHeightCm] = useState<number>(bodyMetrics.heightCm || 178);
+  // Height / BMI inputs (strictly optional, no invented default)
+  const [userHeightCm, setUserHeightCm] = useState<number | undefined>(bodyMetrics.heightCm);
   const [isEditingHeight, setIsEditingHeight] = useState<boolean>(false);
 
   // Aggregate Calculations
@@ -67,14 +67,17 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
 
   // Latest weight
   const sortedWeightEntries = [...weightEntries].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  const currentWeightKg = sortedWeightEntries[0]?.weightKg || bodyMetrics.currentWeightKg || 77.2;
-  const currentWeightLbs = (currentWeightKg * 2.20462).toFixed(1);
+  const currentWeightKg = sortedWeightEntries[0]?.weightKg ?? bodyMetrics.currentWeightKg;
+  const currentWeightLbs = currentWeightKg ? (currentWeightKg * 2.20462).toFixed(1) : null;
 
-  // BMI Calculation
-  const heightM = (userHeightCm || 178) / 100;
-  const calculatedBMI = Number((currentWeightKg / (heightM * heightM)).toFixed(1));
+  // BMI Calculation (requires verified height and weight)
+  const heightM = (userHeightCm && userHeightCm > 0) ? userHeightCm / 100 : null;
+  const calculatedBMI = (currentWeightKg && heightM) 
+    ? Number((currentWeightKg / (heightM * heightM)).toFixed(1))
+    : null;
 
-  const getBMICategory = (bmi: number) => {
+  const getBMICategory = (bmi: number | null) => {
+    if (!bmi) return { label: 'Pending Measurement', color: 'text-slate-400', bg: 'bg-slate-800', bar: 'w-0' };
     if (bmi < 18.5) return { label: 'Underweight', color: 'text-amber-400', bg: 'bg-amber-500/20', bar: 'w-1/4 bg-amber-400' };
     if (bmi < 25) return { label: 'Normal Weight Range', color: 'text-emerald-400', bg: 'bg-emerald-500/20', bar: 'w-2/4 bg-emerald-400' };
     if (bmi < 30) return { label: 'Overweight Range', color: 'text-sky-400', bg: 'bg-sky-500/20', bar: 'w-3/4 bg-sky-400' };
@@ -227,7 +230,13 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
             <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-center shrink-0 w-full sm:w-auto">
               <div className="text-[10px] text-slate-400 font-mono">Current Weight</div>
               <div className="text-lg font-bold font-mono text-slate-200">
-                {currentWeightKg} kg <span className="text-xs text-slate-500 font-normal">({currentWeightLbs} lbs)</span>
+                {currentWeightKg ? (
+                  <>
+                    {currentWeightKg} kg <span className="text-xs text-slate-500 font-normal">({currentWeightLbs} lbs)</span>
+                  </>
+                ) : (
+                  <span className="text-xs text-slate-500 italic font-sans">Not Logged (Optional)</span>
+                )}
               </div>
             </div>
           </div>
@@ -607,11 +616,16 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
               <div>
                 <span className="text-xs text-slate-400 font-mono uppercase">Calculated Body Mass Index</span>
                 <div className="text-3xl font-black font-mono text-slate-100 flex items-baseline gap-2">
-                  <span>{calculatedBMI}</span>
+                  <span>{calculatedBMI !== null ? calculatedBMI : '--'}</span>
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${bmiCategory.bg} ${bmiCategory.color}`}>
                     {bmiCategory.label}
                   </span>
                 </div>
+                {!calculatedBMI && (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Enter your height below and record your first weight entry to calculate BMI screening estimate.
+                  </p>
+                )}
               </div>
 
               {/* Height Configuration */}
@@ -621,9 +635,13 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
                   <div className="flex items-center gap-1.5">
                     <input
                       type="number"
-                      value={userHeightCm}
-                      onChange={(e) => setUserHeightCm(Number(e.target.value))}
-                      className="w-16 px-2 py-1 rounded bg-slate-950 border border-slate-700 text-xs font-mono text-slate-100"
+                      placeholder="e.g. 175"
+                      value={userHeightCm ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value ? Number(e.target.value) : undefined;
+                        setUserHeightCm(val);
+                      }}
+                      className="w-20 px-2 py-1 rounded bg-slate-950 border border-slate-700 text-xs font-mono text-slate-100"
                     />
                     <span className="text-xs text-slate-400">cm</span>
                     <button
@@ -635,14 +653,20 @@ export const ProgressView: React.FC<ProgressViewProps> = ({
                     >
                       Save
                     </button>
+                    <button
+                      onClick={() => setIsEditingHeight(false)}
+                      className="px-2 py-1 rounded bg-slate-800 text-slate-300 text-[10px]"
+                    >
+                      Cancel
+                    </button>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1.5 font-mono text-xs text-slate-200">
-                    <span>{userHeightCm} cm</span>
+                    <span>{userHeightCm ? `${userHeightCm} cm` : 'Not Logged (Optional)'}</span>
                     <button
                       onClick={() => setIsEditingHeight(true)}
                       className="p-1 text-slate-400 hover:text-cyan-400 cursor-pointer"
-                      title="Edit height"
+                      title={userHeightCm ? 'Edit height' : 'Add height'}
                     >
                       <Edit3 className="w-3.5 h-3.5" />
                     </button>

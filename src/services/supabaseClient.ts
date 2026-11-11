@@ -1,52 +1,55 @@
 /**
  * Awakened Fit - Supabase Cloud & PostgreSQL Integration Client
- * Provides secure client-side communication with Supabase Auth and database tables,
- * with resilient offline local storage caching fallback.
+ * Provides secure communication using the official @supabase/supabase-js client,
+ * using authenticated user access tokens (not public anon keys) for RLS enforcement.
  */
 
-import { HunterProfile, WorkoutSession, RewardTransaction } from '../types/hunter';
+import { HunterProfile, WorkoutSession } from '../types/hunter';
 import { StorageService } from './storageService';
-
-// Safely access environment variables if defined
-const SUPABASE_URL = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+import { AuthService, supabaseClient } from './authService';
 
 export class SupabaseService {
   /**
-   * Checks if Supabase Cloud credentials have been provided by the developer/user.
+   * Checks if Supabase Cloud credentials have been provided by environment variables.
    */
   static isConfigured(): boolean {
-    return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+    return AuthService.isCloudConfigured();
   }
 
   static getEndpoint(): string {
-    return SUPABASE_URL || 'Local Prototype / Offline Cache Mode';
+    return AuthService.getEndpoint() || 'Local Offline Mode';
   }
 
   /**
-   * Synchronizes local Hunter profile to Supabase database if configured.
+   * Synchronizes Hunter profile to Supabase using the user's authenticated session.
+   * Enforces RLS by passing the authenticated user's JWT.
    */
   static async syncProfile(profile: HunterProfile): Promise<{ success: boolean; message: string }> {
-    if (!this.isConfigured()) {
-      // Local authoritative mode
-      StorageService.saveProfile(profile);
+    // Always persist to local cache first
+    StorageService.saveProfile(profile);
+
+    if (!this.isConfigured() || !supabaseClient) {
       return {
         success: true,
-        message: 'Saved authoritatively to local persistent cache. (Configure VITE_SUPABASE_URL to enable cloud sync).',
+        message: 'Saved securely to local storage.',
+      };
+    }
+
+    const session = AuthService.getSession();
+    if (!session.isAuthenticated || !session.user) {
+      return {
+        success: true,
+        message: 'Saved locally. Sign in to sync with Supabase Cloud.',
       };
     }
 
     try {
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/hunter_profiles?id=eq.${profile.id}`, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'resolution=merge-duplicates',
-        },
-        body: JSON.stringify({
+      // Upsert hunter profile record with authenticated user ownership
+      const { error } = await supabaseClient
+        .from('hunter_profiles')
+        .upsert({
           id: profile.id,
+          user_id: session.user.id, // Enforce authenticated owner
           name: profile.name,
           title: profile.title,
           archetype: profile.archetype,
@@ -61,37 +64,53 @@ export class SupabaseService {
           achievement_points: profile.achievementPoints,
           is_awakened: profile.isAwakened,
           updated_at: new Date().toISOString(),
-        }),
-      });
+        }, { onConflict: 'id' });
 
-      if (!response.ok) {
-        throw new Error(`Supabase error ${response.status}: ${await response.text()}`);
+      if (error) {
+        throw error;
+      }
+
+      // Upsert attributes
+      const { error: attrError } = await supabaseClient
+        .from('hunter_attributes')
+        .upsert({
+          hunter_id: profile.id,
+          strength: profile.attributes.strength,
+          endurance: profile.attributes.endurance,
+          agility: profile.attributes.agility,
+          vitality: profile.attributes.vitality,
+          discipline: profile.attributes.discipline,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'hunter_id' });
+
+      if (attrError) {
+        console.warn('Attribute cloud sync warning:', attrError.message);
       }
 
       return { success: true, message: 'Cloud profile synchronized with Supabase.' };
     } catch (e: any) {
-      console.warn('Supabase sync fallback to local storage:', e);
-      return { success: false, message: e.message || 'Network error during cloud sync' };
+      console.warn('Supabase sync fallback:', e);
+      return { success: false, message: e.message || 'Error during cloud sync.' };
     }
   }
 
   /**
-   * Validates and posts an authorized workout session to Supabase.
+   * Commits a validated workout session to Supabase with authenticated ownership.
    */
   static async syncWorkout(session: WorkoutSession): Promise<{ success: boolean; message: string }> {
-    if (!this.isConfigured()) {
+    if (!this.isConfigured() || !supabaseClient) {
       return { success: true, message: 'Workout stored in local ledger.' };
     }
 
+    const auth = AuthService.getSession();
+    if (!auth.isAuthenticated || !auth.user) {
+      return { success: true, message: 'Saved to local workout log.' };
+    }
+
     try {
-      const response = await fetch(`${SUPABASE_URL}/rest/v1/workout_sessions`, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const { error } = await supabaseClient
+        .from('workout_sessions')
+        .insert({
           id: session.id,
           hunter_id: session.hunterId,
           title: session.title,
@@ -106,11 +125,29 @@ export class SupabaseService {
           tokens_earned: session.tokensEarned,
           verified: session.verified,
           validation_notes: session.validationNotes,
-        }),
-      });
+        });
 
-      if (!response.ok) {
-        throw new Error(`Supabase error: ${response.status}`);
+      if (error) {
+        throw error;
+      }
+
+      // Sync sets if present
+      const setsToInsert = session.exercises.flatMap(ex =>
+        ex.sets.map(s => ({
+          workout_session_id: session.id,
+          exercise_id: ex.exerciseId,
+          exercise_name: ex.exerciseName,
+          set_number: s.setNumber,
+          completed: s.completed,
+          reps: s.reps || 0,
+          weight_kg: s.weightKg || 0,
+          duration_seconds: s.durationSeconds || 0,
+          rpe: s.rpe || null,
+        }))
+      );
+
+      if (setsToInsert.length > 0) {
+        await supabaseClient.from('workout_sets').insert(setsToInsert);
       }
 
       return { success: true, message: 'Workout session committed to cloud PostgreSQL database.' };

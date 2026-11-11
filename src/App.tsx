@@ -24,8 +24,10 @@ import { WORKOUT_TEMPLATES, EXERCISE_LIBRARY } from './data/exercises';
 import { EvolutionTier } from './data/evolution';
 import { CosmeticItem, COSMETIC_STORE_ITEMS } from './data/store';
 import { SupabaseService } from './services/supabaseClient';
+import { AuthoritativeProgressionService } from './services/authoritativeProgression';
 
 // Components
+import { HomeDashboardView } from './components/HomeDashboardView';
 import { HunterHUD } from './components/HunterHUD';
 import { AttributeRadar } from './components/AttributeRadar';
 import { OnboardingFlow } from './components/OnboardingFlow';
@@ -123,6 +125,7 @@ export default function App() {
     title: string;
     exercises: WorkoutExerciseLog[];
   } | null>(null);
+  const [trainingFilter, setTrainingFilter] = useState<'all' | 'home' | 'gym'>('all');
 
   const [levelUpData, setLevelUpData] = useState<{
     isOpen: boolean;
@@ -139,8 +142,20 @@ export default function App() {
   // Notifications banner
   const [bannerNotice, setBannerNotice] = useState<string | null>(null);
 
-  // Initial Load from Storage
+  // Initial Load from Storage & Supabase Auth
   useEffect(() => {
+    AuthService.init();
+    const unsub = AuthService.onAuthStateChange((newSession) => {
+      setAuthSession(newSession);
+      if (newSession.user) {
+        setProfile(prev => ({
+          ...prev,
+          userId: newSession.user?.id,
+          name: prev.name === 'Candidate' ? newSession.user!.hunterName : prev.name,
+        }));
+      }
+    });
+
     const loadedProfile = StorageService.getProfile();
     const loadedWorkouts = StorageService.getWorkouts();
     const loadedQuests = StorageService.getQuests();
@@ -162,6 +177,8 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
+
+    return () => unsub();
   }, []);
 
   const showNotice = (msg: string) => {
@@ -178,31 +195,27 @@ export default function App() {
   };
 
   // Workout Session Finished & Validated Handler
-  const handleFinishWorkout = (session: WorkoutSession) => {
+  const handleFinishWorkout = async (session: WorkoutSession) => {
     setIsWorkoutModalOpen(false);
 
-    // 1. Authoritative server-style validation of rewards
-    const validation = ProgressionEngine.validateAndCalculateWorkout(session);
-    if (!validation.isValid) {
-      showNotice(validation.rejectReason || 'Workout rejected: Empty sessions cannot be rewarded.');
+    // 1. Authoritative server-style validation and commit
+    const result = await AuthoritativeProgressionService.commitWorkout(
+      session,
+      profile,
+      transactions
+    );
+
+    if (!result.success) {
+      showNotice(result.message);
       return;
     }
 
-    session.expEarned = validation.expEarned;
-    session.tokensEarned = validation.tokensEarned;
-    session.attributeGains = validation.attributeGains;
-    session.validationNotes = validation.validationNotes;
-    session.state = 'rewarded';
+    if (result.isDuplicate) {
+      showNotice(result.message);
+      return;
+    }
 
-    // 2. Apply to profile idempotently
-    const result = ProgressionEngine.applyWorkoutRewardsToProfile(
-      profile,
-      validation,
-      transactions,
-      session.id
-    );
-
-    // 3. Update Quests (daily workout, sets volume)
+    // 2. Update Quests (daily workout, sets volume)
     const totalCompletedSets = session.exercises.flatMap(e => e.sets).filter(s => s.completed).length;
     const updatedQuests = quests.map(q => {
       let current = q.currentCount;
@@ -215,7 +228,7 @@ export default function App() {
       return { ...q, currentCount: current, isCompleted };
     });
 
-    // 4. Update Achievements (First Blood, etc.)
+    // 3. Update Achievements (First Blood, Century Sets)
     const updatedAchievements = achievements.map(a => {
       if (a.id === 'ach_first_blood' && !a.isUnlocked) {
         return { ...a, isUnlocked: true, unlockedAt: new Date().toISOString() };
@@ -234,13 +247,13 @@ export default function App() {
     setWorkouts(updatedWorkouts);
     setQuests(updatedQuests);
     setAchievements(updatedAchievements);
-    setTransactions(result.transactions);
+    setTransactions(result.allTransactions);
     setProfile(result.updatedProfile);
 
     StorageService.saveWorkouts(updatedWorkouts);
     StorageService.saveQuests(updatedQuests);
     StorageService.saveAchievements(updatedAchievements);
-    StorageService.saveTransactions(result.transactions);
+    StorageService.saveTransactions(result.allTransactions);
     StorageService.saveProfile(result.updatedProfile);
 
     // Asynchronously dispatch to Supabase backend if configured
@@ -248,7 +261,7 @@ export default function App() {
     SupabaseService.syncProfile(result.updatedProfile);
 
     // If level-up occurred, show modal
-    if (result.levelsGained > 0) {
+    if (result.levelsGained > 0 || result.newRankPromoted) {
       setLevelUpData({
         isOpen: true,
         level: result.updatedProfile.level,
@@ -256,7 +269,7 @@ export default function App() {
         newRankPromoted: result.newRankPromoted,
       });
     } else {
-      showNotice(`Workout Validated: +${validation.expEarned} EXP, +${validation.tokensEarned} Tokens gained!`);
+      showNotice(result.message);
     }
 
     setActiveCustomWorkout(null);
@@ -356,10 +369,15 @@ export default function App() {
   };
 
   // Quest Reward Claim Handler
-  const handleClaimQuest = (quest: Quest) => {
+  const handleClaimQuest = async (quest: Quest) => {
     if (!quest.isCompleted || quest.isClaimed) return;
 
-    const result = ProgressionEngine.claimQuestRewards(profile, quest, transactions);
+    const result = await AuthoritativeProgressionService.claimQuest(quest, profile, transactions);
+    if (!result.success) {
+      showNotice(result.message);
+      return;
+    }
+
     const updatedQuests = quests.map(q => q.id === quest.id ? { ...q, isClaimed: true } : q);
 
     setQuests(updatedQuests);
@@ -369,46 +387,18 @@ export default function App() {
     StorageService.saveQuests(updatedQuests);
     StorageService.saveTransactions(result.transactions);
     StorageService.saveProfile(result.updatedProfile);
+    SupabaseService.syncProfile(result.updatedProfile);
 
-    showNotice(`Quest Claimed: +${quest.expReward} EXP, +${quest.tokenReward} Tokens!`);
+    showNotice(result.message);
   };
 
-  // Sacred Rest Day Logger (Master Spec 4.E: Calendar-based streak protection)
+  // Sacred Rest Day Logger (Calendar-based streak protection)
   const handleLogRestDay = () => {
-    const todayStr = new Date().toISOString().split('T')[0];
-
-    // Check if already active or logged rest today
-    if (profile.streak.lastActiveDate === todayStr) {
-      showNotice('Recovery already logged for today! Multiple entries on the same day do not inflate streak.');
+    const result = AuthoritativeProgressionService.logRestDay(profile, transactions);
+    if (!result.success) {
+      showNotice(result.message);
       return;
     }
-
-    // Check if yesterday was active
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-    let newStreak = 1;
-    if (profile.streak.lastActiveDate === yesterdayStr) {
-      newStreak = profile.streak.currentDays + 1;
-    }
-
-    const updatedProfile: HunterProfile = {
-      ...profile,
-      streak: {
-        ...profile.streak,
-        currentDays: newStreak,
-        bestDays: Math.max(profile.streak.bestDays, newStreak),
-        restDaysTaken: profile.streak.restDaysTaken + 1,
-        lastActiveDate: todayStr,
-        lastRestDate: todayStr,
-      },
-      attributes: {
-        ...profile.attributes,
-        vitality: Number((profile.attributes.vitality + 0.25).toFixed(2)),
-      },
-      tokens: profile.tokens + 10,
-    };
 
     const updatedQuests = quests.map(q => {
       if (q.id === 'quest_daily_recovery') {
@@ -424,15 +414,18 @@ export default function App() {
       return a;
     });
 
-    setProfile(updatedProfile);
+    setProfile(result.updatedProfile);
+    setTransactions(result.transactions);
     setQuests(updatedQuests);
     setAchievements(updatedAchievements);
 
-    StorageService.saveProfile(updatedProfile);
+    StorageService.saveProfile(result.updatedProfile);
+    StorageService.saveTransactions(result.transactions);
     StorageService.saveQuests(updatedQuests);
     StorageService.saveAchievements(updatedAchievements);
+    SupabaseService.syncProfile(result.updatedProfile);
 
-    showNotice(`Rest & Recovery logged. Streak: ${newStreak} Days (+0.25 Vitality, +10 Tokens).`);
+    showNotice(result.message);
   };
 
   // Cosmetic purchase handler
@@ -533,7 +526,6 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* GM Tools Quick Triggers */}
           <button
             onClick={() => setIsArmoryOpen(true)}
             className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-950/40 border border-amber-600/40 text-amber-300 hover:bg-amber-900/60 transition cursor-pointer"
@@ -541,24 +533,6 @@ export default function App() {
           >
             <ShoppingBag className="w-3 h-3" />
             <span className="hidden sm:inline">Armory</span>
-          </button>
-
-          <button
-            onClick={() => setIsLedgerOpen(true)}
-            className="flex items-center gap-1 px-2 py-0.5 rounded bg-cyan-950/40 border border-cyan-600/40 text-cyan-300 hover:bg-cyan-900/60 transition cursor-pointer"
-            title="Progression Event Ledger"
-          >
-            <FileText className="w-3 h-3" />
-            <span className="hidden sm:inline">Ledger</span>
-          </button>
-
-          <button
-            onClick={() => setIsAdminOpen(true)}
-            className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-950/40 border border-purple-600/40 text-purple-300 hover:bg-purple-900/60 transition cursor-pointer"
-            title="Game Master CMS"
-          >
-            <Settings className="w-3 h-3" />
-            <span className="hidden sm:inline">CMS</span>
           </button>
 
           <button
@@ -619,205 +593,25 @@ export default function App() {
         {/* Main View Area */}
         <main className="flex-1 p-3.5 sm:p-6 space-y-6">
 
-          {/* TAB 1: HOME DASHBOARD (Spec Section 4) */}
+          {/* TAB 1: HOME DASHBOARD (Spec Section 4 & Part 7 Redesign) */}
           {activeTab === 'home' && (
-            <div className="space-y-6">
-              
-              {/* Hunter Banner with Aura Glow */}
-              <div 
-                className="relative rounded-3xl bg-gradient-to-br from-[#0c1328] via-[#090e1f] to-[#060913] border border-cyan-500/30 p-5 sm:p-6 shadow-[0_0_30px_rgba(0,229,255,0.08)] overflow-hidden"
-                style={{
-                  boxShadow: equippedItem ? equippedItem.glowEffect : undefined,
-                }}
-              >
-                <div className="absolute top-0 right-0 w-60 h-60 bg-gradient-to-bl from-cyan-500/15 via-purple-500/10 to-transparent rounded-full blur-3xl pointer-events-none" />
-
-                <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-cyan-950/90 border border-cyan-800 text-cyan-400">
-                        Rank {profile.rank} Operative
-                      </span>
-                      {equippedItem && (
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950/80 border border-amber-700 text-amber-300">
-                          {equippedItem.name}
-                        </span>
-                      )}
-                      <span className="text-xs text-slate-400">
-                        {profile.title}
-                      </span>
-                    </div>
-
-                    <h1 className="text-2xl sm:text-3xl font-black font-['Cinzel',serif] text-slate-100">
-                      Welcome, Hunter {profile.name}
-                    </h1>
-
-                    <p className="text-xs text-slate-400 max-w-md">
-                      Next recommended protocol: <strong className="text-slate-200">{WORKOUT_TEMPLATES[0].title}</strong>. Validated effort elevates STR and VIT attributes.
-                    </p>
-                  </div>
-
-                  <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto">
-                    <button
-                      onClick={() => {
-                        setActiveCustomWorkout(null);
-                        setIsWorkoutModalOpen(true);
-                      }}
-                      className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-[0_0_20px_rgba(0,229,255,0.4)] active:scale-95 transition cursor-pointer"
-                    >
-                      <Dumbbell className="w-4 h-4 fill-slate-950" />
-                      Begin Workout
-                    </button>
-
-                    <button
-                      onClick={() => setIsPlanModalOpen(true)}
-                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-950/70 hover:bg-cyan-900/60 border border-cyan-700/60 text-cyan-300 text-xs font-bold transition cursor-pointer"
-                      title="View personalized 7-day training regimen"
-                    >
-                      <Calendar className="w-3.5 h-3.5 text-cyan-400" />
-                      Custom Plan
-                    </button>
-
-                    <button
-                      onClick={handleLogRestDay}
-                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700/80 text-emerald-400 text-xs font-bold transition cursor-pointer"
-                      title="Log a mindful rest day to preserve streak without working out"
-                    >
-                      <HeartHandshake className="w-3.5 h-3.5" />
-                      Log Rest Day
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Today's Activity Summary Widget (Spec Section 4) */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <div className="p-3.5 rounded-2xl bg-[#0a1832]/80 border border-slate-800 space-y-1">
-                  <div className="text-[10px] font-mono uppercase text-slate-400">Today&apos;s Status</div>
-                  <div className="text-sm font-bold text-cyan-300 flex items-center gap-1.5">
-                    {workouts.some(w => w.startedAt.split('T')[0] === new Date().toISOString().split('T')[0]) ? (
-                      <>
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        <span>Workout Done</span>
-                      </>
-                    ) : (
-                      <>
-                        <Clock className="w-4 h-4 text-amber-400" />
-                        <span>Ready to Train</span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-2xl bg-[#0a1832]/80 border border-slate-800 space-y-1">
-                  <div className="text-[10px] font-mono uppercase text-slate-400">Current Streak</div>
-                  <div className="text-sm font-bold font-mono text-rose-400 flex items-center gap-1.5">
-                    <Flame className="w-4 h-4 fill-rose-500 text-rose-500" />
-                    <span>{profile.streak.currentDays} Days</span>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-2xl bg-[#0a1832]/80 border border-slate-800 space-y-1">
-                  <div className="text-[10px] font-mono uppercase text-slate-400">Weekly Target</div>
-                  <div className="text-sm font-bold font-mono text-slate-200">
-                    {profile.onboarding.trainingDaysPerWeek} Days/Wk
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-2xl bg-[#0a1832]/80 border border-slate-800 space-y-1">
-                  <div className="text-[10px] font-mono uppercase text-slate-400">Hunter Tokens</div>
-                  <div className="text-sm font-bold font-mono text-amber-300 flex items-center gap-1.5">
-                    <Coins className="w-4 h-4 text-amber-400" />
-                    <span>{profile.tokens}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* 5-Attribute Radar */}
-              <AttributeRadar
-                attributes={profile.attributes}
-                unallocatedPoints={profile.unallocatedStatPoints}
-                onAllocate={handleAllocateStat}
-              />
-
-              {/* Daily Quests List */}
-              <div className="rounded-2xl bg-[#090e1d]/90 border border-slate-800/80 p-4 shadow-xl">
-                <div className="flex items-center justify-between mb-3 border-b border-slate-800/60 pb-2">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-cyan-400" />
-                    <h3 className="text-xs uppercase tracking-wider font-semibold text-slate-300 font-['Rajdhani',sans-serif]">
-                      Daily Protocols & Quests
-                    </h3>
-                  </div>
-                  <span className="text-[11px] text-slate-500 font-mono">
-                    Resets in 14h 22m
-                  </span>
-                </div>
-
-                <div className="space-y-2.5">
-                  {quests.filter(q => q.type === 'daily').map((quest) => {
-                    const progressPercent = Math.min(Math.round((quest.currentCount / quest.targetCount) * 100), 100);
-
-                    return (
-                      <div
-                        key={quest.id}
-                        className={`p-3 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 transition ${
-                          quest.isClaimed
-                            ? 'bg-slate-950/40 border-slate-800/60 opacity-60'
-                            : quest.isCompleted
-                            ? 'bg-cyan-950/20 border-cyan-500/60 shadow-[0_0_15px_rgba(0,229,255,0.15)]'
-                            : 'bg-slate-900/60 border-slate-800'
-                        }`}
-                      >
-                        <div className="flex-1 space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-xs text-slate-200">{quest.title}</span>
-                            {quest.associatedAttribute && (
-                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-cyan-400 font-mono">
-                                +{quest.associatedAttribute.toUpperCase()}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[11px] text-slate-400">{quest.description}</div>
-
-                          <div className="flex items-center gap-2 pt-1">
-                            <div className="flex-1 bg-slate-950 h-1.5 rounded-full overflow-hidden border border-slate-800">
-                              <div
-                                className="h-full bg-gradient-to-r from-cyan-400 to-sky-500 transition-all duration-300"
-                                style={{ width: `${progressPercent}%` }}
-                              />
-                            </div>
-                            <span className="text-[10px] font-mono text-slate-400">
-                              {quest.currentCount} / {quest.targetCount}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div>
-                          {quest.isClaimed ? (
-                            <span className="flex items-center gap-1 text-[11px] text-slate-500 font-mono px-3 py-1">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                              Claimed
-                            </span>
-                          ) : quest.isCompleted ? (
-                            <button
-                              onClick={() => handleClaimQuest(quest)}
-                              className="px-4 py-1.5 rounded-lg bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-[0_0_12px_rgba(245,158,11,0.5)] active:scale-95 transition cursor-pointer"
-                            >
-                              Claim +{quest.expReward} EXP
-                            </button>
-                          ) : (
-                            <span className="text-[11px] font-mono text-slate-500 px-3 py-1 rounded bg-slate-900 border border-slate-800">
-                              In Progress
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
+            <HomeDashboardView
+              profile={profile}
+              workouts={workouts}
+              quests={quests}
+              achievements={achievements}
+              onStartWorkout={(workout) => {
+                setActiveCustomWorkout(workout ? { title: workout.title, exercises: workout.exercises } : null);
+                setIsWorkoutModalOpen(true);
+              }}
+              onOpenCustomPlan={() => setIsPlanModalOpen(true)}
+              onLogRestDay={handleLogRestDay}
+              onClaimQuest={handleClaimQuest}
+              onAllocateStat={handleAllocateStat}
+              onOpenNotifications={() => setIsNotificationsModalOpen(true)}
+              onOpenProfile={() => handleTabSwitch('profile')}
+              unreadNotificationsCount={notifications.filter(n => !n.isRead).length}
+            />
           )}
 
           {/* TAB 2: TRAINING SYSTEM (Spec Section 5) */}
@@ -883,28 +677,78 @@ export default function App() {
                 </button>
               </div>
 
+              {/* Workout Category Filter Tabs */}
+              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                {[
+                  { id: 'all', label: 'All Protocols' },
+                  { id: 'home', label: 'Home & Calisthenics' },
+                  { id: 'gym', label: 'Gym & Free Weights' },
+                ].map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setTrainingFilter(cat.id as any)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                      trainingFilter === cat.id
+                        ? 'bg-[#267CFF] text-white shadow-[0_0_12px_rgba(38,124,255,0.4)]'
+                        : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
               {/* Available Templates Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {WORKOUT_TEMPLATES.map(tmpl => (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                {WORKOUT_TEMPLATES
+                  .filter(tmpl => trainingFilter === 'all' || tmpl.environment === trainingFilter || tmpl.environment === 'both')
+                  .map(tmpl => (
                   <div
                     key={tmpl.id}
-                    className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 hover:border-cyan-500/50 transition flex flex-col justify-between space-y-3"
+                    className="p-4 rounded-2xl bg-[#10264A]/80 border border-slate-800 hover:border-[#267CFF]/60 transition flex flex-col justify-between space-y-3.5"
                   >
                     <div>
-                      <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center justify-between mb-1.5">
                         <span className="font-bold text-sm text-cyan-200">{tmpl.title}</span>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
-                          {tmpl.estimatedMinutes}m • {tmpl.environment}
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-950 border border-slate-800 text-cyan-400 font-mono capitalize">
+                          {tmpl.environment} • {tmpl.estimatedMinutes}m
                         </span>
                       </div>
-                      <p className="text-xs text-slate-400">{tmpl.description}</p>
+                      <p className="text-xs text-slate-300 leading-relaxed">{tmpl.description}</p>
+                      <div className="mt-2 text-[11px] text-slate-400 font-mono flex items-center gap-2">
+                        <span>{tmpl.exerciseIds.length} Movements</span>
+                        <span>•</span>
+                        <span className="text-emerald-400">Target: {tmpl.primaryBenefit}</span>
+                      </div>
                     </div>
 
                     <button
-                      onClick={() => setIsWorkoutModalOpen(true)}
-                      className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+                      onClick={() => {
+                        const exercises: WorkoutExerciseLog[] = tmpl.exerciseIds.map(exId => {
+                          const def = EXERCISE_LIBRARY.find(e => e.id === exId);
+                          return {
+                            exerciseId: exId,
+                            exerciseName: def?.name || exId,
+                            category: def?.category || 'strength',
+                            targetMuscleGroup: def?.targetMuscles?.[0] || 'Full Body',
+                            sets: Array.from({ length: def?.defaultSets || 3 }, (_, sIdx) => ({
+                              setNumber: sIdx + 1,
+                              reps: def?.defaultReps || 10,
+                              weightKg: 0,
+                              durationSeconds: def?.defaultDurationSeconds || 0,
+                              completed: false,
+                            })),
+                          };
+                        });
+                        setActiveCustomWorkout({
+                          title: tmpl.title,
+                          exercises,
+                        });
+                        setIsWorkoutModalOpen(true);
+                      }}
+                      className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#267CFF] to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-slate-950 text-xs font-black uppercase tracking-wider transition flex items-center justify-center gap-1.5 cursor-pointer shadow-[0_0_12px_rgba(38,124,255,0.3)]"
                     >
-                      <Dumbbell className="w-3.5 h-3.5" />
+                      <Dumbbell className="w-3.5 h-3.5 fill-slate-950" />
                       Select & Train
                     </button>
                   </div>
@@ -934,7 +778,14 @@ export default function App() {
                         className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between"
                       >
                         <div className="space-y-1">
-                          <div className="font-bold text-xs text-slate-200">{w.title}</div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-xs text-slate-200">{w.title}</span>
+                            {w.isPersonalRecord && (
+                              <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-mono font-bold">
+                                PR
+                              </span>
+                            )}
+                          </div>
                           <div className="text-[11px] text-slate-400 font-mono">
                             {new Date(w.startedAt).toLocaleDateString()} • {w.durationMinutes} mins • {w.exercises.flatMap(e => e.sets).filter(s => s.completed).length} verified sets
                           </div>
@@ -960,8 +811,174 @@ export default function App() {
                   Quests & Hunter Trophies
                 </h2>
                 <p className="text-xs text-slate-400">
-                  Real physical consistency yields persistent tokens and evolution stones.
+                  Real physical consistency yields persistent tokens, EXP, and evolution stones.
                 </p>
+              </div>
+
+              {/* Daily Quests Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider font-['Rajdhani',sans-serif]">
+                    <Sparkles className="w-4 h-4 text-cyan-400" />
+                    Daily Quests ({quests.filter(q => q.type === 'daily' && q.isCompleted).length} / {quests.filter(q => q.type === 'daily').length})
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono">Resets Daily at 00:00</span>
+                </div>
+
+                <div className="space-y-2.5">
+                  {quests.filter(q => q.type === 'daily').map(quest => {
+                    const pct = Math.min(Math.round((quest.currentCount / quest.targetCount) * 100), 100);
+
+                    return (
+                      <div
+                        key={quest.id}
+                        className={`p-4 rounded-2xl border transition ${
+                          quest.isClaimed
+                            ? 'bg-slate-950/40 border-slate-800/60 opacity-60'
+                            : quest.isCompleted
+                            ? 'bg-cyan-950/30 border-cyan-500/50 shadow-[0_0_15px_rgba(0,229,255,0.15)]'
+                            : 'bg-slate-900/70 border-slate-800'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-1 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-slate-100">{quest.title}</span>
+                              {quest.associatedAttribute && (
+                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-800 text-cyan-300 font-mono uppercase">
+                                  +{quest.associatedAttribute}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-400 leading-relaxed">{quest.description}</p>
+                            
+                            <div className="flex items-center gap-3 text-[10px] font-mono pt-1">
+                              <span className="text-cyan-400">+{quest.expReward} EXP</span>
+                              <span className="text-amber-400">+{quest.tokenReward} Tokens</span>
+                              {quest.stoneReward && (
+                                <span className="text-purple-400">+{quest.stoneReward} Stone</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 sm:self-center">
+                            <div className="w-24 text-right">
+                              <div className="text-[11px] font-mono text-slate-300 font-bold">
+                                {quest.currentCount} / {quest.targetCount}
+                              </div>
+                              <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden mt-1">
+                                <div 
+                                  className="h-full rounded-full bg-gradient-to-r from-[#267CFF] to-cyan-400"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {quest.isClaimed ? (
+                              <span className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 text-xs font-mono font-bold flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Claimed
+                              </span>
+                            ) : quest.isCompleted ? (
+                              <button
+                                onClick={() => handleClaimQuest(quest)}
+                                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs uppercase tracking-wider shadow-[0_0_12px_rgba(245,158,11,0.4)] transition cursor-pointer active:scale-95"
+                              >
+                                Claim
+                              </button>
+                            ) : (
+                              <span className="px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-500 text-xs font-mono">
+                                In Progress
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Weekly Quests Section */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider font-['Rajdhani',sans-serif]">
+                    <Flame className="w-4 h-4 text-purple-400" />
+                    Weekly Objectives ({quests.filter(q => q.type === 'weekly' && q.isCompleted).length} / {quests.filter(q => q.type === 'weekly').length})
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono">Resets Every Monday</span>
+                </div>
+
+                <div className="space-y-2.5">
+                  {quests.filter(q => q.type === 'weekly').map(quest => {
+                    const pct = Math.min(Math.round((quest.currentCount / quest.targetCount) * 100), 100);
+
+                    return (
+                      <div
+                        key={quest.id}
+                        className={`p-4 rounded-2xl border transition ${
+                          quest.isClaimed
+                            ? 'bg-slate-950/40 border-slate-800/60 opacity-60'
+                            : quest.isCompleted
+                            ? 'bg-purple-950/30 border-purple-500/50 shadow-[0_0_15px_rgba(151,77,255,0.2)]'
+                            : 'bg-slate-900/70 border-slate-800'
+                        }`}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                          <div className="space-y-1 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-slate-100">{quest.title}</span>
+                              {quest.associatedAttribute && (
+                                <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-800 text-purple-300 font-mono uppercase">
+                                  +{quest.associatedAttribute}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-slate-400 leading-relaxed">{quest.description}</p>
+                            
+                            <div className="flex items-center gap-3 text-[10px] font-mono pt-1">
+                              <span className="text-cyan-400">+{quest.expReward} EXP</span>
+                              <span className="text-amber-400">+{quest.tokenReward} Tokens</span>
+                              {quest.stoneReward && (
+                                <span className="text-purple-400">+{quest.stoneReward} Evolution Stone</span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-3 sm:self-center">
+                            <div className="w-24 text-right">
+                              <div className="text-[11px] font-mono text-slate-300 font-bold">
+                                {quest.currentCount} / {quest.targetCount}
+                              </div>
+                              <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden mt-1">
+                                <div 
+                                  className="h-full rounded-full bg-gradient-to-r from-purple-500 to-indigo-400"
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {quest.isClaimed ? (
+                              <span className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-500 text-xs font-mono font-bold flex items-center gap-1">
+                                <CheckCircle2 className="w-3.5 h-3.5" /> Claimed
+                              </span>
+                            ) : quest.isCompleted ? (
+                              <button
+                                onClick={() => handleClaimQuest(quest)}
+                                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-400 hover:from-purple-400 hover:to-indigo-300 text-white font-black text-xs uppercase tracking-wider shadow-[0_0_12px_rgba(151,77,255,0.4)] transition cursor-pointer active:scale-95"
+                              >
+                                Claim
+                              </button>
+                            ) : (
+                              <span className="px-3 py-1.5 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-500 text-xs font-mono">
+                                In Progress
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Achievements Grid */}

@@ -1,0 +1,277 @@
+AWAKENED FIT v1.1
+
+Act as a senior full-stack engineer, Supabase architect, mobile-first UI/UX designer and fitness application developer.
+
+I want you to improve my existing Awakened Fit project using its latest code.
+
+IMPORTANT PRODUCT DECISION:
+
+Awakened Fit is an independent real-world fitness application.
+
+The future RPG game will be a completely separate project. Do not implement Unity, combat, dungeons, PvP, game synchronization or game APIs.
+
+## PART 1 — AUDIT THE LATEST REPOSITORY
+
+Inspect the latest default branch before changing code.
+
+Pay particular attention to:
+
+- src/App.tsx
+- src/services/authService.ts
+- src/services/supabaseClient.ts
+- src/services/storageService.ts
+- src/services/progressionEngine.ts
+- src/components/WorkoutTrackerModal.tsx
+- src/components/OnboardingFlow.tsx
+- src/components/ProgressView.tsx
+- src/components/ProfileView.tsx
+- src/data/quests.ts
+- package.json
+
+Identify any new problems introduced by the latest changes.
+
+Do not assume a feature works simply because a service or interface exists.
+
+## PART 2 — FIX AUTHENTICATION AND DATABASE SECURITY
+
+This is the highest priority.
+
+1. Remove the automatically authenticated default session.
+2. Remove fake local authentication tokens.
+3. Implement real Supabase Auth.
+4. Implement registration, login, logout and email verification.
+5. Handle access-token expiration and session refresh.
+6. Use the authenticated Supabase user ID as the ownership reference.
+7. Associate every hunter profile with its authenticated account.
+8. Use the official Supabase JavaScript client.
+9. Create proper database migrations.
+10. Implement Row Level Security policies.
+11. Prevent users from accessing other users' private information.
+12. Use authenticated access tokens rather than the public key as the user's Bearer token.
+
+Never expose the Supabase service-role key in frontend code.
+
+## PART 3 — MAKE PROGRESSION SERVER-AUTHORITATIVE
+
+The current frontend must not be trusted to award EXP, Tokens, attributes or quest rewards.
+
+Implement secure backend operations for:
+
+- Workout validation.
+- EXP calculation.
+- Level progression.
+- Attribute changes.
+- Rank evaluation.
+- Quest reward claims.
+- Duplicate event prevention.
+- Progression transaction history.
+
+Use database transactions or appropriately designed server functions.
+
+The frontend should submit workout data and display the results returned by the backend.
+
+Do not simply synchronize client-calculated rewards and call them verified.
+
+## PART 4 — CLEAN UP DEFAULT DATA AND PRIVACY
+
+Remove invented fitness information from new accounts.
+
+Requirements:
+
+- Empty weight history for new accounts.
+- No default body weight.
+- No invented height.
+- No fake fitness achievements.
+- No misleading demo workout history.
+- Private profile by default.
+- Workout sharing disabled by default.
+- Explicit consent before sharing information with a community.
+
+Keep optional preview data clearly labelled as demonstration content.
+
+## PART 5 — FIX FITNESS AND QUEST LOGIC
+
+Review and correct:
+
+- Rest-day rewards.
+- Daily and weekly streak calculations.
+- Timezone-aware daily resets.
+- Weekly quest reset dates.
+- Duplicate workout completion.
+- Duplicate quest claims.
+- Workout duration validation.
+- Workout draft persistence.
+- EXP calculation limits.
+- Attribute progression limits.
+
+A recovery day must be respected and should not encourage excessive exercise or provide exploitable repeated rewards.
+
+## PART 6 — PREMIUM UI REDESIGN
+
+Create a modern, polished mobile-first interface.
+
+Design inspiration:
+- My uploaded fitness application screenshots.
+- Existing Awakened Fit branding.
+- Dark fantasy hunter atmosphere.
+- Premium fitness applications.
+
+Visual palette:
+
+Background: #071326
+Panels: #10264A
+Primary blue: #267CFF
+Purple: #974DFF
+
+Use:
+- Clean cards.
+- Strong typography.
+- Consistent spacing.
+- Subtle gradients.
+- Controlled glow effects.
+- Attractive exercise illustrations.
+- Clear charts.
+- Large touch-friendly controls.
+- Smooth but restrained animations.
+
+Do not make every screen look like a video game.
+
+Fitness screens must prioritize usability and readability. Hunter-themed styling should enhance the experience, not obstruct it.
+
+## PART 7 — REDESIGN THE HOME DASHBOARD
+
+Build a premium Home dashboard with:
+
+1. Welcome message.
+2. Notification shortcut.
+3. Hunter profile and avatar.
+4. Hunter level and rank.
+5. EXP progress.
+6. Today's workout.
+7. Prominent Start Workout button.
+8. Weekly training goal.
+9. Activity statistics.
+10. Daily quest summary.
+11. Five fitness attributes.
+12. Recent achievements.
+
+The main workout action must be immediately accessible.
+
+## PART 8 — IMPROVE TRAINING
+
+Create a clear workout experience with:
+
+- Workout recommendations.
+- Home and gym categories.
+- Exercise library.
+- Exercise demonstrations.
+- Sets and repetitions.
+- Weight tracking.
+- Rest timer.
+- Workout duration.
+- Exercise substitutions.
+- Save and resume.
+- Workout history.
+- Personal records.
+
+Ensure the active workout screen is easy to operate while exercising.
+
+## PART 9 — IMPROVE PROGRESS
+
+Create:
+
+- Weekly and monthly activity summaries.
+- Workout calendar.
+- Workout history.
+- Weight tracking.
+- Weight charts.
+- Training volume.
+- Training duration.
+- Personal records.
+- Fitness milestones.
+- Attribute progression.
+
+Make all measurements optional where possible.
+
+Clearly explain BMI limitations and apply age-appropriate handling.
+
+## PART 10 — IMPROVE HUNTER PROFILE AND QUESTS
+
+Preserve the five attributes:
+
+- Strength.
+- Endurance.
+- Agility.
+- Vitality.
+- Discipline.
+
+Preserve E, D, C, B, A and S ranks.
+
+Improve:
+- Level progress.
+- Attribute display.
+- Rank progress.
+- Stat point allocation.
+- Daily quests.
+- Weekly quests.
+- Achievements.
+- Fitness challenges.
+- Profile customization.
+
+All rewards must be linked to legitimate fitness activities.
+
+## PART 11 — REMOVE DEVELOPMENT-ONLY UI
+
+Move developer controls, test tools, CMS, debug information and data-reset actions out of the ordinary user interface.
+
+Protect all administrative functions with real authorization.
+
+Do not rely on hidden frontend buttons as security.
+
+## PART 12 — DEVELOPMENT RULES
+
+- Work on the existing project.
+- Preserve existing working features.
+- Do not rewrite the entire application unnecessarily.
+- Use reusable components.
+- Use TypeScript properly.
+- Avoid duplicated business logic.
+- Do not use fake data as real information.
+- Do not claim successful cloud synchronization unless it succeeds.
+- Handle errors and loading states properly.
+- Test important functionality.
+- Do not implement the separate game.
+
+## IMPLEMENTATION ORDER
+
+Phase 1: Security and authentication.
+
+Phase 2: Database and server-authoritative progression.
+
+Phase 3: Data cleanup and privacy.
+
+Phase 4: Premium Home dashboard redesign.
+
+Phase 5: Training experience improvements.
+
+Phase 6: Progress analytics and Hunter profile.
+
+Phase 7: Quests and achievements.
+
+Phase 8: Testing and release preparation.
+
+Before each phase:
+1. Explain the files to be modified.
+2. Explain the intended changes.
+3. Implement the changes.
+4. Run available tests and build checks.
+5. Report failures and unresolved issues.
+
+Do not silently skip failed tests.
+
+FINAL OBJECTIVE:
+
+Make Awakened Fit a premium, secure and genuinely useful fitness application with a unique hunter-inspired identity.
+
+Build reliable foundations before adding more features.
+

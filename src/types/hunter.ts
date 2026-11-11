@@ -87,6 +87,7 @@ export interface HunterOnboardingData {
 
 export interface HunterProfile {
   id: string;
+  userId?: string;
   name: string;
   title: string;
   archetype: HunterArchetype;

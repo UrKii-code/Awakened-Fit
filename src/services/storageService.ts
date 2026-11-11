@@ -37,8 +37,8 @@ const STORAGE_KEYS = {
 export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   units: 'metric',
   defaultRestSeconds: 60,
-  profileVisibility: 'public',
-  shareWorkoutsToCommunity: true,
+  profileVisibility: 'private',
+  shareWorkoutsToCommunity: false,
   notificationsEnabled: {
     workoutReminders: true,
     questResets: true,
@@ -47,35 +47,8 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   },
 };
 
-export const INITIAL_WEIGHT_ENTRIES: BodyWeightEntry[] = [
-  {
-    id: 'weight_log_1',
-    hunterId: 'hunter_default_init',
-    date: new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0],
-    weightKg: 78.5,
-    weightLbs: 173.1,
-    notes: 'Initial weigh-in after awakening',
-    createdAt: new Date(Date.now() - 14 * 86400000).toISOString(),
-  },
-  {
-    id: 'weight_log_2',
-    hunterId: 'hunter_default_init',
-    date: new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0],
-    weightKg: 77.8,
-    weightLbs: 171.5,
-    notes: 'Week 1 progress after consistent training',
-    createdAt: new Date(Date.now() - 7 * 86400000).toISOString(),
-  },
-  {
-    id: 'weight_log_3',
-    hunterId: 'hunter_default_init',
-    date: new Date().toISOString().split('T')[0],
-    weightKg: 77.2,
-    weightLbs: 170.2,
-    notes: 'Feeling lighter and stronger',
-    createdAt: new Date().toISOString(),
-  },
-];
+// Clean default: empty weight history for new accounts (Spec Part 4)
+export const INITIAL_WEIGHT_ENTRIES: BodyWeightEntry[] = [];
 
 export const INITIAL_GUILDS: FitnessGuild[] = [
   {
@@ -173,13 +146,13 @@ export const DEFAULT_HUNTER_PROFILE: HunterProfile = {
     vitality: 10,
     discipline: 10,
   },
-  tokens: 50,
+  tokens: 0,
   evolutionStones: 0,
-  achievementPoints: 10,
+  achievementPoints: 0,
   streak: {
-    currentDays: 1,
-    bestDays: 1,
-    lastActiveDate: new Date().toISOString().split('T')[0],
+    currentDays: 0,
+    bestDays: 0,
+    lastActiveDate: '',
     totalWorkouts: 0,
     restDaysTaken: 0,
   },
@@ -404,9 +377,6 @@ export class StorageService {
       }
     }
     return {
-      heightCm: 178,
-      currentWeightKg: 77.2,
-      targetWeightKg: 75.0,
       preferredUnit: 'metric',
     };
   }

@@ -235,9 +235,20 @@ export const CommunityModal: React.FC<CommunityModalProps> = ({
           {/* TAB 2: ACTIVITY FEED */}
           {activeTab === 'feed' && (
             <div className="space-y-3">
+              {/* Privacy & Consent Banner */}
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-700/80 text-[11px] text-slate-300 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold text-cyan-300">
+                  <Shield className="w-3.5 h-3.5" />
+                  <span>Privacy Pledge: Private by Default</span>
+                </div>
+                <p className="text-slate-400 leading-relaxed">
+                  Your workouts remain completely private to your account unless you explicitly toggle &quot;Share workouts to community&quot; in Profile Settings. Below are demonstration community transmissions.
+                </p>
+              </div>
+
               <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-                <span>Recent verified workout accomplishments from your fellow hunters</span>
-                <span className="text-cyan-400 font-mono">Live Sync</span>
+                <span>Recent verified workout accomplishments from fellow hunters</span>
+                <span className="text-cyan-400 font-mono text-[10px] bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800">Demonstration Feed</span>
               </div>
 
               {posts.map(post => (

@@ -1,13 +1,15 @@
 /**
  * Awakened Fit - Verification & Automated Test Suite
- * Tests core RPG formulas, exploit prevention, calendar streak rules, and quest cycle calculations.
+ * Tests core RPG formulas, exploit prevention, calendar streak rules, quest cycle calculations,
+ * and AuthoritativeProgressionService server-side logic.
  */
 
 import { ProgressionEngine } from '../services/progressionEngine';
-import { DEFAULT_HUNTER_PROFILE } from '../services/storageService';
+import { AuthoritativeProgressionService } from '../services/authoritativeProgression';
+import { DEFAULT_HUNTER_PROFILE, DEFAULT_USER_PREFERENCES } from '../services/storageService';
 import { PlanGenerator } from '../services/planGenerator';
 import { AuthService } from '../services/authService';
-import { WorkoutSession } from '../types/hunter';
+import { WorkoutSession, Quest } from '../types/hunter';
 import { getTodayCycleId, getCurrentWeekCycleId } from '../data/quests';
 
 export function runTestSuite(): { passed: number; failed: number; results: { test: string; ok: boolean; message?: string }[] } {
@@ -156,9 +158,42 @@ export function runTestSuite(): { passed: number; failed: number; results: { tes
   assert('Youth plan schedule has 7 days', youthPlan.weeklySchedule.length === 7);
   assert('Adaptations recorded in plan', youthPlan.appliedSubstitutions.length > 0 || youthPlan.adaptationReason.length > 0);
 
-  // 9. Auth Service Session
+  // 9. Auth Service Session Exists
   const session = AuthService.getSession();
   assert('Auth session exists and initialized', session !== null);
+
+  // 10. Privacy & Data Cleanliness Defaults (Part 4)
+  assert('Default user profile visibility is private', DEFAULT_USER_PREFERENCES.profileVisibility === 'private');
+  assert('Default workout community sharing is disabled', DEFAULT_USER_PREFERENCES.shareWorkoutsToCommunity === false);
+  assert('New accounts start with 0 tokens', DEFAULT_HUNTER_PROFILE.tokens === 0);
+  assert('New accounts start with 0 active streak days', DEFAULT_HUNTER_PROFILE.streak.currentDays === 0);
+
+  // 11. Authoritative Rest Day Enforcement (Part 5)
+  const restResult1 = AuthoritativeProgressionService.logRestDay(baseProfile, []);
+  assert('First rest day log succeeds', restResult1.success === true);
+  const restResult2 = AuthoritativeProgressionService.logRestDay(restResult1.updatedProfile, restResult1.transactions);
+  assert('Same-day second rest day log is blocked', restResult2.success === false);
+
+  // 12. Authoritative Quest Claim Idempotency
+  const testQuest: Quest = {
+    id: 'test_quest_volume',
+    title: 'Test Quest',
+    description: 'Complete test volume',
+    type: 'daily',
+    category: 'strength',
+    cycleId: todayCycle,
+    targetCount: 1,
+    currentCount: 1,
+    isCompleted: true,
+    isClaimed: false,
+    expReward: 100,
+    tokenReward: 20,
+    expiresAt: new Date(Date.now() + 86400000).toISOString(),
+  };
+
+  const initialClaim = ProgressionEngine.claimQuestRewards(baseProfile, testQuest, []);
+  const duplicateClaim = ProgressionEngine.claimQuestRewards(initialClaim.updatedProfile, testQuest, initialClaim.transactions);
+  assert('Duplicate quest claim for same cycle is idempotent', duplicateClaim.transactions.length === initialClaim.transactions.length);
 
   const passed = results.filter(r => r.ok).length;
   const failed = results.filter(r => !r.ok).length;
