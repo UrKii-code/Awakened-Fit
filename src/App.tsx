@@ -7,24 +7,37 @@ import {
   HunterRank, 
   AttributeScores, 
   RewardTransaction,
-  Exercise 
+  Exercise,
+  WorkoutExerciseLog,
+  BodyWeightEntry,
+  BodyMetricsProfile,
+  InAppNotification,
+  FitnessGuild,
+  UserPreferences
 } from './types/hunter';
 import { StorageService, DEFAULT_HUNTER_PROFILE } from './services/storageService';
 import { ProgressionEngine } from './services/progressionEngine';
+import { AuthService, AuthSession } from './services/authService';
+import { PlannedDaySession } from './services/planGenerator';
 import { HUNTER_RANKS, ARCHETYPES } from './data/ranks';
 import { WORKOUT_TEMPLATES, EXERCISE_LIBRARY } from './data/exercises';
 import { EvolutionTier } from './data/evolution';
 import { CosmeticItem, COSMETIC_STORE_ITEMS } from './data/store';
+import { SupabaseService } from './services/supabaseClient';
 
 // Components
 import { HunterHUD } from './components/HunterHUD';
 import { AttributeRadar } from './components/AttributeRadar';
 import { OnboardingFlow } from './components/OnboardingFlow';
 import { WorkoutTrackerModal } from './components/WorkoutTrackerModal';
+import { PersonalizedPlanModal } from './components/PersonalizedPlanModal';
+import { AuthModal } from './components/AuthModal';
 import { LevelUpModal } from './components/LevelUpModal';
-import { GameSyncModal } from './components/GameSyncModal';
+import { CommunityModal } from './components/CommunityModal';
+import { NotificationCenterModal } from './components/NotificationCenterModal';
+import { ProgressView } from './components/ProgressView';
+import { ProfileView } from './components/ProfileView';
 import { ExerciseLibraryModal } from './components/ExerciseLibraryModal';
-import { AnalyticsView } from './components/AnalyticsView';
 import { CharacterEvolutionModal } from './components/CharacterEvolutionModal';
 import { ArmoryStoreModal } from './components/ArmoryStoreModal';
 import { LedgerModal } from './components/LedgerModal';
@@ -50,7 +63,12 @@ import {
   ShoppingBag, 
   FileText, 
   Settings, 
-  Megaphone 
+  Megaphone,
+  User,
+  Users,
+  Bell,
+  Clock,
+  Coins
 } from 'lucide-react';
 
 export default function App() {
@@ -62,22 +80,49 @@ export default function App() {
   const [transactions, setTransactions] = useState<RewardTransaction[]>([]);
   const [customExercises, setCustomExercises] = useState<Exercise[]>([]);
   
+  // Additional Domain State (Weight, Metrics, Notifications, Preferences, Guilds)
+  const [weightEntries, setWeightEntries] = useState<BodyWeightEntry[]>(() => StorageService.getWeightEntries());
+  const [bodyMetrics, setBodyMetrics] = useState<BodyMetricsProfile>(() => StorageService.getBodyMetrics());
+  const [notifications, setNotifications] = useState<InAppNotification[]>(() => StorageService.getNotifications());
+  const [userPreferences, setUserPreferences] = useState<UserPreferences>(() => StorageService.getUserPreferences());
+  const [guilds, setGuilds] = useState<FitnessGuild[]>(() => StorageService.getGuilds());
+
   // Cosmetic state
   const [ownedCosmetics, setOwnedCosmetics] = useState<string[]>([]);
   const [equippedAura, setEquippedAura] = useState<string | null>(null);
 
-  // Navigation
-  const [activeTab, setActiveTab] = useState<'hub' | 'workouts' | 'quests' | 'analytics' | 'character'>('hub');
+  // Navigation: 5 core sections (training, quest, home, progress, profile)
+  const [activeTab, setActiveTab] = useState<'training' | 'quests' | 'home' | 'progress' | 'profile'>('home');
+  const [poppingTab, setPoppingTab] = useState<string | null>('home');
+  const [popKey, setPopKey] = useState<number>(0);
+
+  const handleTabSwitch = (tabId: 'training' | 'quests' | 'home' | 'progress' | 'profile') => {
+    setActiveTab(tabId);
+    setPoppingTab(tabId);
+    setPopKey(prev => prev + 1);
+  };
   const [isMobileFrame, setIsMobileFrame] = useState<boolean>(false);
   
+  // Auth session
+  const [authSession, setAuthSession] = useState<AuthSession>(() => AuthService.getSession());
+
   // Modals
   const [isWorkoutModalOpen, setIsWorkoutModalOpen] = useState<boolean>(false);
-  const [isSyncModalOpen, setIsSyncModalOpen] = useState<boolean>(false);
+  const [isPlanModalOpen, setIsPlanModalOpen] = useState<boolean>(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [isCommunityModalOpen, setIsCommunityModalOpen] = useState<boolean>(false);
+  const [isNotificationsModalOpen, setIsNotificationsModalOpen] = useState<boolean>(false);
   const [isExerciseCodexOpen, setIsExerciseCodexOpen] = useState<boolean>(false);
   const [isEvolutionModalOpen, setIsEvolutionModalOpen] = useState<boolean>(false);
   const [isArmoryOpen, setIsArmoryOpen] = useState<boolean>(false);
   const [isLedgerOpen, setIsLedgerOpen] = useState<boolean>(false);
   const [isAdminOpen, setIsAdminOpen] = useState<boolean>(false);
+
+  // Custom Workout session passed from Plan or Codex
+  const [activeCustomWorkout, setActiveCustomWorkout] = useState<{
+    title: string;
+    exercises: WorkoutExerciseLog[];
+  } | null>(null);
 
   const [levelUpData, setLevelUpData] = useState<{
     isOpen: boolean;
@@ -128,6 +173,7 @@ export default function App() {
   const handleOnboardingComplete = (newProfile: HunterProfile) => {
     setProfile(newProfile);
     StorageService.saveProfile(newProfile);
+    SupabaseService.syncProfile(newProfile);
     showNotice(`Awakening Verified! Welcome, Hunter ${newProfile.name}.`);
   };
 
@@ -135,18 +181,23 @@ export default function App() {
   const handleFinishWorkout = (session: WorkoutSession) => {
     setIsWorkoutModalOpen(false);
 
-    // 1. Authoritative calculation of rewards
-    const rewards = ProgressionEngine.calculateWorkoutRewards(session);
-    session.expEarned = rewards.expEarned;
-    session.tokensEarned = rewards.tokensEarned;
-    session.attributeGains = rewards.attributeGains;
-    session.validationNotes = rewards.validationNotes;
+    // 1. Authoritative server-style validation of rewards
+    const validation = ProgressionEngine.validateAndCalculateWorkout(session);
+    if (!validation.isValid) {
+      showNotice(validation.rejectReason || 'Workout rejected: Empty sessions cannot be rewarded.');
+      return;
+    }
+
+    session.expEarned = validation.expEarned;
+    session.tokensEarned = validation.tokensEarned;
+    session.attributeGains = validation.attributeGains;
+    session.validationNotes = validation.validationNotes;
     session.state = 'rewarded';
 
-    // 2. Apply to profile
+    // 2. Apply to profile idempotently
     const result = ProgressionEngine.applyWorkoutRewardsToProfile(
       profile,
-      rewards,
+      validation,
       transactions,
       session.id
     );
@@ -192,6 +243,10 @@ export default function App() {
     StorageService.saveTransactions(result.transactions);
     StorageService.saveProfile(result.updatedProfile);
 
+    // Asynchronously dispatch to Supabase backend if configured
+    SupabaseService.syncWorkout(session);
+    SupabaseService.syncProfile(result.updatedProfile);
+
     // If level-up occurred, show modal
     if (result.levelsGained > 0) {
       setLevelUpData({
@@ -201,8 +256,95 @@ export default function App() {
         newRankPromoted: result.newRankPromoted,
       });
     } else {
-      showNotice(`Workout Validated: +${rewards.expEarned} EXP, +${rewards.tokensEarned} Tokens gained!`);
+      showNotice(`Workout Validated: +${validation.expEarned} EXP, +${validation.tokensEarned} Tokens gained!`);
     }
+
+    setActiveCustomWorkout(null);
+  };
+
+  // Launch a session from Personalized 7-Day Plan
+  const handleStartPlanDay = (session: PlannedDaySession) => {
+    setIsPlanModalOpen(false);
+    if (session.isRestDay) {
+      handleLogRestDay();
+      return;
+    }
+
+    const logs: WorkoutExerciseLog[] = session.exercises.map(ex => ({
+      exerciseId: ex.id,
+      exerciseName: ex.name,
+      category: ex.category,
+      sets: Array.from({ length: ex.defaultSets }, (_, i) => ({
+        setNumber: i + 1,
+        completed: false,
+        reps: ex.defaultReps || 10,
+        weightKg: ex.category === 'bodyweight' ? 0 : 20,
+        durationSeconds: ex.defaultDurationSeconds,
+      })),
+    }));
+
+    setActiveCustomWorkout({
+      title: `${session.focus} (${session.dayName})`,
+      exercises: logs,
+    });
+    setIsWorkoutModalOpen(true);
+  };
+
+  // Weight & Body Metrics Handlers (Spec Section 6)
+  const handleAddWeightEntry = (entry: Omit<BodyWeightEntry, 'id' | 'createdAt'>) => {
+    const newEntry: BodyWeightEntry = {
+      ...entry,
+      id: `wt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date().toISOString(),
+    };
+    const updated = [newEntry, ...weightEntries];
+    setWeightEntries(updated);
+    StorageService.saveWeightEntries(updated);
+    showNotice(`Weight entry recorded: ${userPreferences.units === 'imperial' ? `${newEntry.weightLbs} lbs` : `${newEntry.weightKg} kg`}`);
+  };
+
+  const handleDeleteWeightEntry = (id: string) => {
+    const updated = weightEntries.filter(w => w.id !== id);
+    setWeightEntries(updated);
+    StorageService.saveWeightEntries(updated);
+    showNotice('Weight record deleted.');
+  };
+
+  const handleUpdateBodyMetrics = (metrics: BodyMetricsProfile) => {
+    setBodyMetrics(metrics);
+    StorageService.saveBodyMetrics(metrics);
+    showNotice('Body metrics updated.');
+  };
+
+  const handleUpdatePreferences = (prefs: UserPreferences) => {
+    setUserPreferences(prefs);
+    StorageService.saveUserPreferences(prefs);
+    showNotice('Preferences saved.');
+  };
+
+  const handleToggleJoinGuild = (guildId: string) => {
+    const updated = guilds.map(g => {
+      if (g.id === guildId) {
+        const willJoin = !g.isJoined;
+        return {
+          ...g,
+          isJoined: willJoin,
+          memberCount: willJoin ? g.memberCount + 1 : g.memberCount - 1,
+        };
+      }
+      return g;
+    });
+    setGuilds(updated);
+    StorageService.saveGuilds(updated);
+    const target = updated.find(g => g.id === guildId);
+    showNotice(target?.isJoined ? `Joined "${target.name}"!` : `Left "${target?.name}".`);
+  };
+
+  const handleMarkAllNotificationsAsRead = () => {
+    const updated = notifications.map(n => ({ ...n, isRead: true }));
+    setNotifications(updated);
+    StorageService.saveNotifications(updated);
+    showNotice('All notifications marked as read.');
   };
 
   // Stat point allocation handler
@@ -231,16 +373,35 @@ export default function App() {
     showNotice(`Quest Claimed: +${quest.expReward} EXP, +${quest.tokenReward} Tokens!`);
   };
 
-  // Sacred Rest Day Logger
+  // Sacred Rest Day Logger (Master Spec 4.E: Calendar-based streak protection)
   const handleLogRestDay = () => {
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    // Check if already active or logged rest today
+    if (profile.streak.lastActiveDate === todayStr) {
+      showNotice('Recovery already logged for today! Multiple entries on the same day do not inflate streak.');
+      return;
+    }
+
+    // Check if yesterday was active
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+    let newStreak = 1;
+    if (profile.streak.lastActiveDate === yesterdayStr) {
+      newStreak = profile.streak.currentDays + 1;
+    }
+
     const updatedProfile: HunterProfile = {
       ...profile,
       streak: {
         ...profile.streak,
-        currentDays: profile.streak.currentDays + 1,
-        bestDays: Math.max(profile.streak.bestDays, profile.streak.currentDays + 1),
+        currentDays: newStreak,
+        bestDays: Math.max(profile.streak.bestDays, newStreak),
         restDaysTaken: profile.streak.restDaysTaken + 1,
-        lastActiveDate: new Date().toISOString().split('T')[0],
+        lastActiveDate: todayStr,
+        lastRestDate: todayStr,
       },
       attributes: {
         ...profile.attributes,
@@ -271,7 +432,7 @@ export default function App() {
     StorageService.saveQuests(updatedQuests);
     StorageService.saveAchievements(updatedAchievements);
 
-    showNotice('Rest & Recovery logged. Streak preserved (+0.25 Vitality, +10 Tokens).');
+    showNotice(`Rest & Recovery logged. Streak: ${newStreak} Days (+0.25 Vitality, +10 Tokens).`);
   };
 
   // Cosmetic purchase handler
@@ -364,7 +525,11 @@ export default function App() {
       <div className="w-full bg-[#03060c] border-b border-slate-900 px-4 py-1.5 flex items-center justify-between text-[11px] text-slate-400 font-mono">
         <div className="flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-          <span>AWAKENED FIT • PHASE 6 ONLINE</span>
+          <span>AWAKENED FIT • STABILIZED CORE</span>
+          <span className="text-slate-600 hidden md:inline">|</span>
+          <span className="text-[10px] text-cyan-400/80 hidden md:inline">
+            {SupabaseService.isConfigured() ? 'Supabase Cloud: Synced' : 'Storage: Resilient Local / Cloud Ready'}
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -429,9 +594,15 @@ export default function App() {
         {/* Sticky Header HUD */}
         <HunterHUD
           profile={profile}
-          onOpenSync={() => setIsSyncModalOpen(true)}
-          onStartWorkout={() => setIsWorkoutModalOpen(true)}
-          onOpenProfile={() => setActiveTab('character')}
+          unreadNotificationCount={notifications.filter(n => !n.isRead).length}
+          onOpenNotifications={() => setIsNotificationsModalOpen(true)}
+          onOpenCommunity={() => setIsCommunityModalOpen(true)}
+          onStartWorkout={() => {
+            setActiveCustomWorkout(null);
+            setIsWorkoutModalOpen(true);
+          }}
+          onOpenProfile={() => handleTabSwitch('profile')}
+          onOpenAuth={() => setIsAuthModalOpen(true)}
         />
 
         {/* Global Toast Notification */}
@@ -448,8 +619,8 @@ export default function App() {
         {/* Main View Area */}
         <main className="flex-1 p-3.5 sm:p-6 space-y-6">
 
-          {/* TAB 1: HUNTER HUB */}
-          {activeTab === 'hub' && (
+          {/* TAB 1: HOME DASHBOARD (Spec Section 4) */}
+          {activeTab === 'home' && (
             <div className="space-y-6">
               
               {/* Hunter Banner with Aura Glow */}
@@ -478,21 +649,33 @@ export default function App() {
                     </div>
 
                     <h1 className="text-2xl sm:text-3xl font-black font-['Cinzel',serif] text-slate-100">
-                      {profile.name}
+                      Welcome, Hunter {profile.name}
                     </h1>
 
                     <p className="text-xs text-slate-400 max-w-md">
-                      Next recommended protocol: {WORKOUT_TEMPLATES[0].title}. Validated effort elevates STR and VIT attributes.
+                      Next recommended protocol: <strong className="text-slate-200">{WORKOUT_TEMPLATES[0].title}</strong>. Validated effort elevates STR and VIT attributes.
                     </p>
                   </div>
 
                   <div className="flex flex-row sm:flex-col gap-2 w-full sm:w-auto">
                     <button
-                      onClick={() => setIsWorkoutModalOpen(true)}
+                      onClick={() => {
+                        setActiveCustomWorkout(null);
+                        setIsWorkoutModalOpen(true);
+                      }}
                       className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-[0_0_20px_rgba(0,229,255,0.4)] active:scale-95 transition cursor-pointer"
                     >
                       <Dumbbell className="w-4 h-4 fill-slate-950" />
                       Begin Workout
+                    </button>
+
+                    <button
+                      onClick={() => setIsPlanModalOpen(true)}
+                      className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-950/70 hover:bg-cyan-900/60 border border-cyan-700/60 text-cyan-300 text-xs font-bold transition cursor-pointer"
+                      title="View personalized 7-day training regimen"
+                    >
+                      <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                      Custom Plan
                     </button>
 
                     <button
@@ -503,6 +686,49 @@ export default function App() {
                       <HeartHandshake className="w-3.5 h-3.5" />
                       Log Rest Day
                     </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Today's Activity Summary Widget (Spec Section 4) */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3.5 rounded-2xl bg-[#0a1832]/80 border border-slate-800 space-y-1">
+                  <div className="text-[10px] font-mono uppercase text-slate-400">Today&apos;s Status</div>
+                  <div className="text-sm font-bold text-cyan-300 flex items-center gap-1.5">
+                    {workouts.some(w => w.startedAt.split('T')[0] === new Date().toISOString().split('T')[0]) ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                        <span>Workout Done</span>
+                      </>
+                    ) : (
+                      <>
+                        <Clock className="w-4 h-4 text-amber-400" />
+                        <span>Ready to Train</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-[#0a1832]/80 border border-slate-800 space-y-1">
+                  <div className="text-[10px] font-mono uppercase text-slate-400">Current Streak</div>
+                  <div className="text-sm font-bold font-mono text-rose-400 flex items-center gap-1.5">
+                    <Flame className="w-4 h-4 fill-rose-500 text-rose-500" />
+                    <span>{profile.streak.currentDays} Days</span>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-[#0a1832]/80 border border-slate-800 space-y-1">
+                  <div className="text-[10px] font-mono uppercase text-slate-400">Weekly Target</div>
+                  <div className="text-sm font-bold font-mono text-slate-200">
+                    {profile.onboarding.trainingDaysPerWeek} Days/Wk
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-[#0a1832]/80 border border-slate-800 space-y-1">
+                  <div className="text-[10px] font-mono uppercase text-slate-400">Hunter Tokens</div>
+                  <div className="text-sm font-bold font-mono text-amber-300 flex items-center gap-1.5">
+                    <Coins className="w-4 h-4 text-amber-400" />
+                    <span>{profile.tokens}</span>
                   </div>
                 </div>
               </div>
@@ -594,8 +820,8 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 2: WORKOUTS & TEMPLATES */}
-          {activeTab === 'workouts' && (
+          {/* TAB 2: TRAINING SYSTEM (Spec Section 5) */}
+          {activeTab === 'training' && (
             <div className="space-y-5">
               <div className="flex items-center justify-between">
                 <div>
@@ -617,13 +843,44 @@ export default function App() {
                   </button>
 
                   <button
-                    onClick={() => setIsWorkoutModalOpen(true)}
+                    onClick={() => {
+                      setActiveCustomWorkout(null);
+                      setIsWorkoutModalOpen(true);
+                    }}
                     className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs uppercase tracking-wider transition cursor-pointer"
                   >
                     <Plus className="w-4 h-4" />
                     Train
                   </button>
                 </div>
+              </div>
+
+              {/* Personalized Regimen Spotlight Banner */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-cyan-950/60 via-slate-900 to-indigo-950/50 border border-cyan-500/40 shadow-[0_0_25px_rgba(0,229,255,0.1)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-400/40">
+                      Personalized 7-Day Program
+                    </span>
+                    <span className="text-xs text-slate-400 font-mono">
+                      {profile.onboarding.trainingDaysPerWeek} Days/Wk • {profile.onboarding.trainingEnvironment}
+                    </span>
+                  </div>
+                  <div className="font-bold text-sm text-slate-100">
+                    Automated Regimen with Injury Safeguards & Rest Balancing
+                  </div>
+                  <div className="text-xs text-slate-400 max-w-xl">
+                    Tailored specifically to your experience level, available equipment, and physical limitation constraints. Launch directly into any scheduled day.
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsPlanModalOpen(true)}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition flex items-center justify-center gap-2 cursor-pointer shadow-[0_0_15px_rgba(0,229,255,0.3)] shrink-0 active:scale-95"
+                >
+                  <Calendar className="w-4 h-4" />
+                  View 7-Day Plan
+                </button>
               </div>
 
               {/* Available Templates Grid */}
@@ -747,133 +1004,134 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB 4: QUANTITATIVE ANALYTICS */}
-          {activeTab === 'analytics' && (
-            <AnalyticsView
-              profile={profile}
+          {/* TAB 4: FITNESS PROGRESS & REPORTS (Spec Section 6) */}
+          {activeTab === 'progress' && (
+            <ProgressView
               workouts={workouts}
+              streakDays={profile.streak.currentDays}
+              weightEntries={weightEntries}
+              bodyMetrics={bodyMetrics}
+              onAddWeightEntry={handleAddWeightEntry}
+              onDeleteWeightEntry={handleDeleteWeightEntry}
+              onUpdateBodyMetrics={handleUpdateBodyMetrics}
             />
           )}
 
-          {/* TAB 5: CHARACTER IDENTITY & EVOLUTION */}
-          {activeTab === 'character' && (
-            <div className="space-y-6">
-              <div className="rounded-3xl bg-gradient-to-br from-[#0e162d] via-[#090f22] to-[#060913] border border-cyan-500/30 p-5 sm:p-6 shadow-xl relative overflow-hidden">
-                <div className="flex flex-col sm:flex-row items-center gap-5">
-                  {/* Avatar Representation */}
-                  <div 
-                    className="w-24 h-24 rounded-3xl flex items-center justify-center font-black text-4xl border-2 shadow-[0_0_25px_rgba(0,229,255,0.4)] transition-all"
-                    style={{
-                      borderColor: currentRank.color,
-                      color: currentRank.color,
-                      backgroundColor: '#0a1020',
-                      boxShadow: equippedItem ? equippedItem.glowEffect : undefined,
-                    }}
-                  >
-                    {profile.rank}
-                  </div>
-
-                  <div className="text-center sm:text-left space-y-1">
-                    <div className="flex items-center justify-center sm:justify-start gap-2">
-                      <span className="font-bold text-lg text-slate-100">{profile.name}</span>
-                      <span className="text-xs px-2 py-0.5 rounded bg-cyan-950 border border-cyan-800 text-cyan-400 font-mono">
-                        Level {profile.level}
-                      </span>
-                    </div>
-
-                    <div className="text-xs text-purple-300 font-mono">
-                      {profile.title} • {currentArchetype.name}
-                    </div>
-
-                    <p className="text-xs text-slate-400 max-w-sm">
-                      {currentRank.description}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Quick Actions Row */}
-                <div className="flex flex-wrap items-center justify-between gap-3 mt-5 pt-4 border-t border-slate-800">
-                  <div className="text-xs text-slate-300">
-                    Stones: <span className="font-mono font-bold text-purple-400">{profile.evolutionStones}</span> • Tokens: <span className="font-mono font-bold text-amber-400">{profile.tokens}</span>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setIsArmoryOpen(true)}
-                      className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition cursor-pointer"
-                    >
-                      <ShoppingBag className="w-3.5 h-3.5" />
-                      Armory
-                    </button>
-
-                    <button
-                      onClick={() => setIsEvolutionModalOpen(true)}
-                      className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Evolution Studio
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Unity Game Sync Action */}
-              <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950/40 to-slate-900 border border-purple-500/40 flex items-center justify-between">
-                <div>
-                  <div className="font-bold text-sm text-purple-200">Standalone Unity Game Integration</div>
-                  <div className="text-xs text-slate-400">Inspect the live JSON payload ready for the standalone client</div>
-                </div>
-                <button
-                  onClick={() => setIsSyncModalOpen(true)}
-                  className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer"
-                >
-                  Open Bridge
-                </button>
-              </div>
-
-              {/* Onboarding Preferences Review */}
-              <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-2 text-xs">
-                <div className="font-bold text-slate-300 uppercase tracking-wider text-[11px] font-['Rajdhani',sans-serif]">
-                  Onboarding Baseline Profile:
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-slate-400">
-                  <div>Environment: <span className="text-slate-200 capitalize">{profile.onboarding.trainingEnvironment}</span></div>
-                  <div>Weekly Commitment: <span className="text-slate-200">{profile.onboarding.trainingDaysPerWeek} Days/wk</span></div>
-                  <div>Primary Goal: <span className="text-slate-200 capitalize">{profile.onboarding.primaryGoal.replace('_', ' ')}</span></div>
-                  <div>Session Length: <span className="text-slate-200">{profile.onboarding.preferredDurationMinutes} mins</span></div>
-                  <div className="col-span-2">
-                    Limitations: <span className="text-slate-200">{profile.onboarding.physicalLimitations.join(', ') || 'None reported'}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
+          {/* TAB 5: PROFILE & SETTINGS (Spec Section 11) */}
+          {activeTab === 'profile' && (
+            <ProfileView
+              profile={profile}
+              achievements={achievements}
+              preferences={userPreferences}
+              onUpdatePreferences={handleUpdatePreferences}
+              onAllocateStat={handleAllocateStat}
+              onOpenArmory={() => setIsArmoryOpen(true)}
+              onOpenAuth={() => setIsAuthModalOpen(true)}
+              onResetData={handleResetData}
+            />
           )}
 
         </main>
 
-        {/* Bottom Mobile Navigation Bar */}
-        <nav className="sticky bottom-0 z-30 w-full bg-[#060913]/95 backdrop-blur-md border-t border-slate-800/80 px-2 py-2">
-          <div className="max-w-md mx-auto grid grid-cols-5 gap-1">
+        {/* Bottom Mobile Navigation Bar - (Training, Quest, Home, Progress, Profile) */}
+        <nav className="sticky bottom-0 z-30 w-full bg-[#050811]/95 backdrop-blur-xl border-t border-cyan-900/40 shadow-[0_-10px_25px_rgba(2,6,23,0.8)] px-2 pt-1 pb-2">
+          <div className="max-w-md mx-auto grid grid-cols-5 items-end gap-1.5 relative">
             {[
-              { id: 'hub', label: 'Hub', icon: <Sparkles className="w-4 h-4" /> },
-              { id: 'workouts', label: 'Training', icon: <Dumbbell className="w-4 h-4" /> },
-              { id: 'quests', label: 'Quests', icon: <Trophy className="w-4 h-4" /> },
-              { id: 'analytics', label: 'Analytics', icon: <TrendingUp className="w-4 h-4" /> },
-              { id: 'character', label: 'Identity', icon: <Award className="w-4 h-4" /> },
+              { id: 'training' as const, label: 'Training', icon: Dumbbell, isCenter: false },
+              { id: 'quests' as const, label: 'Quest', icon: Trophy, isCenter: false },
+              { id: 'home' as const, label: 'Home', icon: Sparkles, isCenter: true },
+              { id: 'progress' as const, label: 'Progress', icon: TrendingUp, isCenter: false },
+              { id: 'profile' as const, label: 'Profile', icon: Award, isCenter: false },
             ].map(tab => {
               const isActive = activeTab === tab.id;
+              const isPopping = poppingTab === tab.id;
+              const Icon = tab.icon;
+
+              if (tab.isCenter) {
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleTabSwitch(tab.id)}
+                    className={`relative flex flex-col items-center justify-center -translate-y-2 py-1.5 px-1 rounded-2xl transition-all duration-300 cursor-pointer select-none ${
+                      isActive
+                        ? 'bg-gradient-to-b from-cyan-950/90 via-blue-950/80 to-[#071326] border border-cyan-400 text-cyan-300 animate-mana-pulse scale-105 shadow-[0_0_22px_rgba(0,229,255,0.45)]'
+                        : 'bg-slate-950/90 border border-slate-800/90 text-slate-400 hover:text-slate-200 hover:border-slate-700 hover:bg-slate-900/80'
+                    }`}
+                  >
+                    {/* Ambient Mana Aura Ring */}
+                    {isActive && (
+                      <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-cyan-500/35 via-purple-500/30 to-blue-500/35 blur-md animate-mana-aura pointer-events-none -z-10" />
+                    )}
+
+                    {/* Active Mana Crystal Top Bead */}
+                    {isActive && (
+                      <span className="absolute -top-1.5 w-2.5 h-1 rounded-full bg-cyan-300 shadow-[0_0_10px_#00E5FF]" />
+                    )}
+
+                    {/* Icon Container with "Level Up" Pop & Mana Glow */}
+                    <div className="relative flex items-center justify-center p-1.5">
+                      {isPopping && (
+                        <div
+                          key={`burst-${popKey}`}
+                          className="absolute inset-0 rounded-full border-2 border-cyan-400/90 animate-spark-burst pointer-events-none"
+                        />
+                      )}
+                      <div
+                        key={isPopping ? `icon-${tab.id}-${popKey}` : `icon-${tab.id}`}
+                        className={`${isPopping ? 'animate-level-up-pop' : ''} transition-transform`}
+                      >
+                        <Icon className={`w-5 h-5 ${isActive ? 'text-cyan-300 filter drop-shadow-[0_0_8px_rgba(0,229,255,0.85)]' : 'text-slate-400'}`} />
+                      </div>
+                    </div>
+
+                    <span className={`text-[10px] font-bold font-['Rajdhani',sans-serif] tracking-widest uppercase transition-colors ${
+                      isActive ? 'text-cyan-300 font-black drop-shadow-[0_0_6px_rgba(0,229,255,0.7)]' : 'text-slate-400'
+                    }`}>
+                      {tab.label}
+                    </span>
+                  </button>
+                );
+              }
+
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex flex-col items-center justify-center py-1.5 rounded-xl transition cursor-pointer ${
+                  onClick={() => handleTabSwitch(tab.id)}
+                  className={`relative flex flex-col items-center justify-center py-2 px-1 rounded-xl transition-all duration-300 cursor-pointer overflow-hidden select-none ${
                     isActive
-                      ? 'text-cyan-300 bg-cyan-950/50 shadow-[0_0_10px_rgba(0,229,255,0.2)]'
-                      : 'text-slate-400 hover:text-slate-200'
+                      ? 'bg-gradient-to-b from-cyan-950/70 via-blue-950/50 to-[#071326] border border-cyan-400/60 text-cyan-300 animate-mana-pulse scale-[1.03]'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/40 hover:scale-[1.01]'
                   }`}
                 >
-                  {tab.icon}
-                  <span className="text-[10px] font-semibold mt-1 font-['Rajdhani',sans-serif] tracking-wider uppercase">
+                  {/* Ambient Mana Pulse Aura */}
+                  {isActive && (
+                    <div className="absolute inset-0 rounded-xl bg-cyan-500/10 blur-sm animate-mana-aura pointer-events-none -z-10" />
+                  )}
+
+                  {/* Active Mana Indicator */}
+                  {isActive && (
+                    <span className="absolute top-0 w-4 h-0.5 rounded-full bg-cyan-400 shadow-[0_0_8px_#00E5FF]" />
+                  )}
+
+                  {/* Icon with "Level Up" Pop animation */}
+                  <div className="relative flex items-center justify-center p-0.5">
+                    {isPopping && (
+                      <div
+                        key={`burst-${popKey}`}
+                        className="absolute inset-0 rounded-full border border-cyan-400/80 animate-spark-burst pointer-events-none"
+                      />
+                    )}
+                    <div
+                      key={isPopping ? `icon-${tab.id}-${popKey}` : `icon-${tab.id}`}
+                      className={`${isPopping ? 'animate-level-up-pop' : ''} transition-transform`}
+                    >
+                      <Icon className={`w-4 h-4 ${isActive ? 'text-cyan-300 filter drop-shadow-[0_0_6px_rgba(0,229,255,0.75)]' : 'text-slate-400'}`} />
+                    </div>
+                  </div>
+
+                  <span className={`text-[10px] font-semibold mt-1 font-['Rajdhani',sans-serif] tracking-wider uppercase transition-colors ${
+                    isActive ? 'text-cyan-200 font-bold drop-shadow-[0_0_4px_rgba(0,229,255,0.6)]' : 'text-slate-400'
+                  }`}>
                     {tab.label}
                   </span>
                 </button>
@@ -883,11 +1141,45 @@ export default function App() {
         </nav>
       </div>
 
-      {/* Modals */}
       {isWorkoutModalOpen && (
         <WorkoutTrackerModal
-          onClose={() => setIsWorkoutModalOpen(false)}
+          hunterId={profile.id}
+          initialExercises={activeCustomWorkout?.exercises}
+          initialTitle={activeCustomWorkout?.title}
+          onClose={() => {
+            setIsWorkoutModalOpen(false);
+            setActiveCustomWorkout(null);
+          }}
           onFinishWorkout={handleFinishWorkout}
+          onDraftSaved={() => showNotice('Workout session paused and saved as draft. Resume anytime!')}
+        />
+      )}
+
+      {isPlanModalOpen && (
+        <PersonalizedPlanModal
+          profile={profile}
+          onStartDaySession={handleStartPlanDay}
+          onClose={() => setIsPlanModalOpen(false)}
+        />
+      )}
+
+      {isAuthModalOpen && (
+        <AuthModal
+          session={authSession}
+          onSessionUpdated={(updated) => {
+            setAuthSession(updated);
+            if (updated.user && updated.user.hunterName) {
+              const updatedProfile = { ...profile, name: updated.user.hunterName };
+              setProfile(updatedProfile);
+              StorageService.saveProfile(updatedProfile);
+            }
+            showNotice('Account credentials synchronized.');
+          }}
+          onAccountWiped={() => {
+            setIsAuthModalOpen(false);
+            handleResetData();
+          }}
+          onClose={() => setIsAuthModalOpen(false)}
         />
       )}
 
@@ -897,6 +1189,7 @@ export default function App() {
           userLimitations={profile.onboarding.physicalLimitations}
           onSelectForWorkout={() => {
             setIsExerciseCodexOpen(false);
+            setActiveCustomWorkout(null);
             setIsWorkoutModalOpen(true);
           }}
         />
@@ -942,11 +1235,23 @@ export default function App() {
         />
       )}
 
-      {isSyncModalOpen && (
-        <GameSyncModal
-          profile={profile}
-          achievements={achievements}
-          onClose={() => setIsSyncModalOpen(false)}
+      {isCommunityModalOpen && (
+        <CommunityModal
+          currentHunterName={profile.name}
+          currentRank={profile.rank}
+          guilds={guilds}
+          onToggleJoinGuild={handleToggleJoinGuild}
+          onClose={() => setIsCommunityModalOpen(false)}
+        />
+      )}
+
+      {isNotificationsModalOpen && (
+        <NotificationCenterModal
+          notifications={notifications}
+          preferences={userPreferences}
+          onMarkAllAsRead={handleMarkAllNotificationsAsRead}
+          onUpdatePreferences={handleUpdatePreferences}
+          onClose={() => setIsNotificationsModalOpen(false)}
         />
       )}
 

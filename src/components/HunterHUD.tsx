@@ -2,20 +2,26 @@ import React from 'react';
 import { HunterProfile } from '../types/hunter';
 import { HUNTER_RANKS, ARCHETYPES } from '../data/ranks';
 import { BrandLogo } from './BrandLogo';
-import { Flame, Coins, Gem, Share2, PlusCircle, Shield } from 'lucide-react';
+import { Flame, Coins, Gem, PlusCircle, Shield, User, Bell, Users } from 'lucide-react';
 
 interface HunterHUDProps {
   profile: HunterProfile;
-  onOpenSync: () => void;
+  unreadNotificationCount?: number;
+  onOpenNotifications: () => void;
+  onOpenCommunity: () => void;
   onStartWorkout: () => void;
   onOpenProfile: () => void;
+  onOpenAuth?: () => void;
 }
 
 export const HunterHUD: React.FC<HunterHUDProps> = ({
   profile,
-  onOpenSync,
+  unreadNotificationCount = 0,
+  onOpenNotifications,
+  onOpenCommunity,
   onStartWorkout,
   onOpenProfile,
+  onOpenAuth,
 }) => {
   const currentRank = HUNTER_RANKS[profile.rank] || HUNTER_RANKS.E;
   const archetype = ARCHETYPES[profile.archetype] || ARCHETYPES.berserker;
@@ -29,17 +35,38 @@ export const HunterHUD: React.FC<HunterHUDProps> = ({
           <BrandLogo size="md" showSubtitle />
 
           {/* Quick Action Mobile Trigger */}
-          <div className="flex items-center gap-2 sm:hidden">
+          <div className="flex items-center gap-1.5 sm:hidden">
+            {onOpenAuth && (
+              <button
+                onClick={onOpenAuth}
+                title="Account & Cloud Sync"
+                className="p-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:text-cyan-400 active:scale-95 transition"
+              >
+                <User className="w-4 h-4" />
+              </button>
+            )}
             <button
-              onClick={onOpenSync}
-              title="Game Sync API"
-              className="p-2 rounded-lg bg-slate-900 border border-slate-700 text-cyan-400 active:scale-95 transition"
+              onClick={onOpenCommunity}
+              title="Community & Guilds"
+              className="p-2 rounded-lg bg-slate-900 border border-slate-700 text-blue-400 active:scale-95 transition"
             >
-              <Share2 className="w-4 h-4" />
+              <Users className="w-4 h-4" />
+            </button>
+            <button
+              onClick={onOpenNotifications}
+              title="Notifications"
+              className="relative p-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:text-cyan-400 active:scale-95 transition"
+            >
+              <Bell className="w-4 h-4" />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-cyan-500 text-slate-950 font-black text-[9px] flex items-center justify-center animate-pulse">
+                  {unreadNotificationCount}
+                </span>
+              )}
             </button>
             <button
               onClick={onStartWorkout}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 text-black font-bold text-xs uppercase shadow-md active:scale-95 transition"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 via-cyan-500 to-sky-400 text-slate-950 font-bold text-xs uppercase shadow-md active:scale-95 transition"
             >
               <PlusCircle className="w-3.5 h-3.5" />
               Train
@@ -92,7 +119,7 @@ export const HunterHUD: React.FC<HunterHUDProps> = ({
             </div>
             <div className="h-2 w-full bg-slate-900 rounded-full overflow-hidden border border-slate-800">
               <div 
-                className="h-full bg-gradient-to-r from-cyan-500 via-sky-400 to-indigo-500 transition-all duration-500 shadow-[0_0_8px_rgba(0,229,255,0.7)]"
+                className="h-full bg-gradient-to-r from-blue-600 via-cyan-400 to-indigo-500 transition-all duration-500 shadow-[0_0_8px_rgba(38,124,255,0.7)]"
                 style={{ width: `${expPercentage}%` }}
               />
             </div>
@@ -116,16 +143,42 @@ export const HunterHUD: React.FC<HunterHUDProps> = ({
 
           {/* Desktop Call to Action */}
           <div className="hidden sm:flex items-center gap-2">
+            {onOpenAuth && (
+              <button
+                onClick={onOpenAuth}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-cyan-400 active:scale-95 transition text-xs font-semibold"
+                title="Account & Cloud Sync"
+              >
+                <User className="w-4 h-4 text-cyan-400" />
+                <span>Account</span>
+              </button>
+            )}
+
             <button
-              onClick={onOpenSync}
-              className="p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700/80 text-cyan-400 hover:text-cyan-300 active:scale-95 transition"
-              title="Unity Game Sync API Payload"
+              onClick={onOpenCommunity}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700/80 text-blue-400 hover:text-blue-300 active:scale-95 transition text-xs font-semibold"
+              title="Fitness Communities & Leaderboard"
             >
-              <Share2 className="w-4 h-4" />
+              <Users className="w-4 h-4" />
+              <span>Community</span>
             </button>
+
+            <button
+              onClick={onOpenNotifications}
+              className="relative p-2 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700/80 text-slate-300 hover:text-cyan-300 active:scale-95 transition"
+              title="Hunter Notifications"
+            >
+              <Bell className="w-4 h-4" />
+              {unreadNotificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-cyan-500 text-slate-950 font-black text-[9px] flex items-center justify-center animate-pulse">
+                  {unreadNotificationCount}
+                </span>
+              )}
+            </button>
+
             <button
               onClick={onStartWorkout}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-[0_0_15px_rgba(0,229,255,0.4)] active:scale-95 transition cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-cyan-400 to-sky-400 hover:from-blue-500 hover:to-cyan-300 text-slate-950 font-black text-xs uppercase tracking-wider shadow-[0_0_15px_rgba(38,124,255,0.4)] active:scale-95 transition cursor-pointer"
             >
               <PlusCircle className="w-4 h-4 stroke-[2.5]" />
               Start Workout

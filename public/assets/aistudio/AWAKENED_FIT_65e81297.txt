@@ -1,0 +1,449 @@
+AWAKENED FIT v1.0
+
+Act as a senior full-stack developer, mobile application architect, UI/UX designer, fitness product designer, database engineer, and gamification specialist.
+
+Your task is to improve and develop my existing Awakened Fit application by combining its existing Solo Leveling-inspired hunter progression system with the visual design direction shown in my uploaded reference screenshots.
+
+## 1. IMPORTANT PRODUCT DIRECTION
+
+Awakened Fit is a real-world fitness application with RPG-inspired gamification.
+
+Its purpose is to help users improve their real-world fitness through workouts, fitness tracking, personalized programs, challenges, and progression.
+
+The concept is:
+
+"Train in real life. Grow as a hunter."
+
+IMPORTANT:
+Awakened Fit is NOT the RPG game.
+
+The future game will be a completely separate project. I will decide how to develop that game later.
+
+Do not build:
+- Unity integration.
+- Game synchronization.
+- Game authentication.
+- Dungeon systems.
+- PvP battles.
+- Combat mechanics.
+- Matchmaking.
+- Game inventory or equipment mechanics.
+- Game-specific APIs.
+
+Keep the fitness app self-contained.
+
+The app can have hunter levels, ranks, attributes, quests, and achievements as motivational gamification features. These features must relate to real-world fitness activities.
+
+## 2. DESIGN REFERENCES
+
+Use my uploaded screenshots as visual references.
+
+Combine their design direction with the existing Awakened Fit branding.
+
+Design characteristics:
+- Dark navy and charcoal backgrounds.
+- Modern mobile interface.
+- Blue and purple accent colors.
+- Rounded panels and cards.
+- Clear statistics and progress indicators.
+- Illustrated exercise demonstrations.
+- Attractive workout cards.
+- Compact and readable information.
+- Modern bottom navigation.
+- Premium fantasy-inspired visual elements.
+- Subtle glowing effects and animations.
+
+Suggested colors:
+- Background: #071326
+- Panel: #10264A
+- Energy blue: #267CFF
+- Arcane purple: #974DFF
+
+Do not copy the reference screenshots exactly. Adapt their layout and usability to Awakened Fit.
+
+Preserve the existing A-shaped logo and brand identity.
+
+The application must be mobile-first, responsive, accessible, and visually consistent.
+
+## 3. MAIN NAVIGATION
+
+Create a clear bottom navigation with five main sections:
+
+1. Home
+2. Training
+3. Quests
+4. Progress
+5. Profile
+
+Additional features such as Community, Leaderboard, Notifications, Settings, and Rewards can be accessed through suitable screens or secondary navigation.
+
+Avoid overcrowding the main navigation.
+
+## 4. HOME DASHBOARD
+
+Create a personalized home dashboard.
+
+Display:
+- Welcome message.
+- Hunter profile summary.
+- Current level and rank.
+- EXP progress bar.
+- Character avatar.
+- Daily workout recommendation.
+- Today's activity summary.
+- Daily quest progress.
+- Weekly fitness goal.
+- Current workout streak.
+- Quick-start workout button.
+- Recent achievements.
+
+The dashboard should immediately tell users what they have accomplished and what they can do next.
+
+## 5. TRAINING SYSTEM
+
+Create a complete fitness tracking experience.
+
+Include:
+- Workout library.
+- Personalized workout plans.
+- Home workouts.
+- Gym workouts.
+- Strength training.
+- Running.
+- Cycling.
+- Sprint training.
+- Mobility and flexibility.
+- Recovery activities.
+
+Workout functionality:
+- Exercise instructions.
+- Exercise images or animations.
+- Sets and repetitions.
+- Weight tracking.
+- Rest timers.
+- Workout duration.
+- Exercise substitutions.
+- Workout history.
+- Save unfinished workouts.
+- Resume unfinished workouts.
+- Personal records.
+
+Workout plans must adapt to the user's fitness experience, goals, available equipment, and exercise limitations.
+
+## 6. FITNESS PROGRESS AND REPORTS
+
+Use the reference screenshots for inspiration.
+
+Create a Progress section containing:
+
+### Progress Report
+- Total workouts.
+- Total workout duration.
+- Total training volume where applicable.
+- Calories burned only when reasonably estimated.
+- Current workout streak.
+- Weekly activity summary.
+- Monthly activity summary.
+
+### Activity History
+- Calendar view.
+- Completed workout history.
+- Rest and recovery days.
+- Workout details.
+- Weekly and monthly filters.
+
+### Weight Tracking
+- Record body weight.
+- Display weight history.
+- Interactive progress chart.
+- Allow users to edit or delete entries.
+
+### Body Mass Index
+- Calculate BMI using user-provided height and weight.
+- Clearly explain that BMI is a screening measure, not a complete assessment of health or fitness.
+- Apply age-appropriate handling for younger users.
+
+Do not require users to enter weight or body measurements to use the application.
+
+## 7. HUNTER PROGRESSION
+
+Preserve the existing Awakened Fit progression concept.
+
+Five attributes:
+- Strength.
+- Endurance.
+- Agility.
+- Vitality.
+- Discipline.
+
+Users should develop their hunter attributes through meaningful real-world fitness activities.
+
+Example mapping:
+- Strength training → Strength.
+- Running → Endurance and Agility.
+- Cycling → Endurance and Vitality.
+- Sprint training → Agility.
+- Mobility → Agility and Vitality.
+- Consistent healthy training habits → Discipline.
+
+Include:
+- Hunter level.
+- EXP progress.
+- E, D, C, B, A, S ranks.
+- Attribute statistics.
+- Level-up notifications.
+- Available stat points.
+- Achievement milestones.
+- Character avatar customization.
+
+Progression must be calculated and validated securely on the backend.
+
+Do not reward users for empty or invalid workouts.
+
+Avoid encouraging excessive exercise.
+
+## 8. QUESTS AND CHALLENGES
+
+Create a fitness-focused quest system.
+
+Include:
+- Daily quests.
+- Weekly quests.
+- Fitness challenges.
+- Consistency challenges.
+- Strength milestones.
+- Endurance milestones.
+- Mobility goals.
+- Personal achievements.
+
+Every quest must have:
+- Description.
+- Objective.
+- Progress indicator.
+- Completion status.
+- Reward.
+- Expiration or reset cycle where appropriate.
+
+Prevent duplicate reward claims.
+
+Make sure quests encourage sustainable fitness habits and include recovery-friendly goals.
+
+## 9. COMMUNITY AND LEADERBOARD
+
+Use the community and leaderboard reference screenshots as inspiration.
+
+### Community
+- Browse fitness communities.
+- Join communities.
+- View community activity.
+- Share workout achievements.
+- Participate in fitness challenges.
+- Allow users to control what information they share.
+
+### Leaderboard
+- Friends leaderboard.
+- Global leaderboard.
+- Weekly leaderboard.
+- Monthly leaderboard.
+- Fitness challenge rankings.
+
+Use fair ranking rules that do not reward dangerous workout volume or excessive training.
+
+Protect user privacy. Do not expose private health or body measurement data.
+
+Include reporting and moderation controls.
+
+## 10. NOTIFICATIONS
+
+Create an in-app notification center.
+
+Support:
+- Workout reminders.
+- Quest completion.
+- Achievement unlocks.
+- Level-up notifications.
+- Friend activity.
+- Community announcements.
+- Challenge updates.
+
+Allow users to configure notification preferences.
+
+Do not send excessive or manipulative notifications.
+
+## 11. PROFILE AND SETTINGS
+
+Create a complete user profile.
+
+Include:
+- Profile picture or avatar.
+- Username.
+- Hunter level.
+- Hunter rank.
+- Fitness experience.
+- Fitness goals.
+- Workout preferences.
+- Achievement collection.
+- Workout history.
+
+Settings should include:
+- Account settings.
+- Privacy settings.
+- Workout settings.
+- Notification settings.
+- Units and measurement preferences.
+- Theme settings.
+- Help and support.
+- Feedback.
+- Account deletion.
+
+## 12. REWARDS SHOP
+
+A fitness-themed rewards shop may be included.
+
+Focus on motivational rewards such as:
+- Profile frames.
+- Avatar cosmetics.
+- Titles.
+- Badges.
+- Themes.
+
+Rewards should be earned through legitimate app activities.
+
+Keep the shop separate from real-world fitness tracking.
+
+Do not introduce pay-to-win mechanics or rewards that encourage unsafe exercise.
+
+## 13. ONBOARDING
+
+Create a polished onboarding experience.
+
+Collect:
+- Gender, with an optional prefer-not-to-say choice.
+- Age range.
+- Fitness experience.
+- Fitness goals.
+- Workout environment.
+- Available equipment.
+- Preferred workout days.
+- Relevant exercise limitations.
+
+Age options:
+- Under 18.
+- 18–24.
+- 25–34.
+- 35–44.
+- 45–59.
+- 60+.
+
+Fitness experience:
+- Beginner.
+- Returning.
+- Intermediate.
+- Advanced.
+
+Provide age-appropriate safeguards and guidance for users under 18.
+
+Do not make sensitive information mandatory unless genuinely necessary.
+
+## 14. BACKEND AND SECURITY
+
+Use Supabase for:
+- Authentication.
+- PostgreSQL database.
+- User profiles.
+- Workout storage.
+- Progression records.
+- Achievements.
+- Community data.
+- Notifications.
+
+Implement:
+- Row Level Security.
+- Secure user ownership.
+- Server-side progression calculations.
+- Duplicate reward protection.
+- Workout validation.
+- Error handling.
+- Data synchronization.
+
+Never put service-role keys in frontend environment variables.
+
+The frontend may use the Supabase publishable/anon key with appropriate RLS policies.
+
+## 15. EXISTING PROJECT IMPROVEMENTS
+
+Inspect and fix the existing issues before expanding features.
+
+Pay special attention to:
+- localStorage-only persistence.
+- Client-side EXP calculations.
+- Empty workout reward exploits.
+- Hardcoded hunter IDs.
+- Incorrect streak calculations.
+- Duplicate quest rewards.
+- Inconsistent rank recalculation.
+- Incomplete onboarding.
+- Client-only admin permissions.
+- Accessibility problems.
+
+Do not remove existing working features unnecessarily.
+
+## 16. DEVELOPMENT PRIORITY
+
+Build in this order:
+
+Phase 1: Audit and fix existing application.
+
+Phase 2: Improve mobile UI and navigation.
+
+Phase 3: Complete onboarding and user profiles.
+
+Phase 4: Build reliable workout tracking.
+
+Phase 5: Implement Supabase and secure data storage.
+
+Phase 6: Implement hunter progression and fitness quests.
+
+Phase 7: Build progress reports and analytics.
+
+Phase 8: Build community, leaderboards, and notifications.
+
+Phase 9: Add rewards and polish.
+
+Phase 10: Test, optimize, and prepare for release.
+
+## 17. DEVELOPMENT RULES
+
+- Inspect the existing repository before coding.
+- Preserve existing working functionality.
+- Use reusable components.
+- Maintain clean TypeScript architecture.
+- Do not create fake working features.
+- Do not use mock data as real user data.
+- Do not expose secrets.
+- Test important functionality.
+- Explain significant changes.
+- Keep the interface consistent with the design references.
+- Do not start the separate game project.
+- Complete the fitness app as an independent product.
+
+## FINAL OBJECTIVE
+
+Create Awakened Fit as a polished, modern, dark fantasy-inspired fitness application that combines:
+
+- Real-world fitness tracking.
+- Personalized workout programs.
+- Fitness progress reports.
+- Hunter levels and ranks.
+- Five fitness attributes.
+- Daily and weekly quests.
+- Achievements.
+- Community.
+- Leaderboards.
+- Notifications.
+- Profile customization.
+- Fitness rewards.
+
+The result should feel like a premium fitness application with the atmosphere of a hunter progression system.
+
+Focus on making the application genuinely useful, reliable, secure, and enjoyable to use.

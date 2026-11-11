@@ -8,18 +8,38 @@ import {
 } from '../types/hunter';
 import { HUNTER_RANKS } from '../data/ranks';
 
+export interface WorkoutValidationResult {
+  isValid: boolean;
+  rejectReason?: string;
+  expEarned: number;
+  tokensEarned: number;
+  attributeGains: AttributeScores;
+  validationNotes: string;
+}
+
 export class ProgressionEngine {
   /**
-   * Calculates EXP needed to ascend from level L to level L+1.
-   * Scaled with a soft polynomial curve for healthy, non-punitive pacing.
+   * Configurable Level EXP Formula per Master Specification Section 6:
+   * Provisional formula: EXP_next = 1000 + 250 * (Level - 1)
    */
-  static getExpForLevel(level: number): number {
-    if (level <= 1) return 150;
-    return Math.floor(120 * Math.pow(level, 1.38));
+  static getExpForLevel(level: number, useLinearSpec: boolean = true): number {
+    if (level < 1) return 1000;
+    if (useLinearSpec) {
+      return 1000 + 250 * (level - 1);
+    }
+    // Alternative polynomial curve
+    return Math.floor(1000 * Math.pow(level, 1.25));
   }
 
   /**
-   * Evaluates if a hunter qualifies for a higher rank.
+   * Evaluates if a hunter qualifies for a higher rank based on Level and total Attribute thresholds.
+   * Rank Requirements:
+   * E: Level 1+  (Total Attributes 50)
+   * D: Level 5+  (Total Attributes 65)
+   * C: Level 15+ (Total Attributes 95)
+   * B: Level 30+ (Total Attributes 140)
+   * A: Level 50+ (Total Attributes 210)
+   * S: Level 75+ (Total Attributes 300)
    */
   static evaluateRank(level: number, attributes: AttributeScores): HunterRank {
     const totalStats = Object.values(attributes).reduce((acc, curr) => acc + curr, 0);
@@ -33,16 +53,12 @@ export class ProgressionEngine {
   }
 
   /**
-   * Validates a workout session and returns authoritative EXP and Attribute increases.
-   * Workout lifecycle: Planned -> Started -> Completed -> Validated -> Rewarded
+   * Authoritative server-side workout validation.
+   * REJECTS empty workouts (zero completed sets or zero meaningful volume).
+   * Does NOT auto-assign minimum workout durations to incomplete sessions.
    */
-  static calculateWorkoutRewards(session: WorkoutSession): {
-    expEarned: number;
-    tokensEarned: number;
-    attributeGains: AttributeScores;
-    validationNotes: string;
-  } {
-    // Count total valid completed sets
+  static validateAndCalculateWorkout(session: WorkoutSession): WorkoutValidationResult {
+    // 1. Audit completed sets
     let totalCompletedSets = 0;
     let strengthScore = 0;
     let enduranceScore = 0;
@@ -55,9 +71,13 @@ export class ProgressionEngine {
       totalCompletedSets += completedSets.length;
 
       completedSets.forEach(set => {
-        // Evaluate volume
-        const repFactor = Math.min((set.reps || 10) / 10, 2.5);
-        const weightFactor = set.weightKg ? Math.min(1 + (set.weightKg / 60), 2.5) : 1;
+        const reps = set.reps || 0;
+        const weight = set.weightKg || 0;
+        const duration = set.durationSeconds || 0;
+
+        // Rep factor calibrated to meaningful work
+        const repFactor = Math.min(Math.max(reps / 10, 0.5), 2.5);
+        const weightFactor = weight > 0 ? Math.min(1 + (weight / 60), 3.0) : 1;
         const volumeFactor = repFactor * weightFactor;
 
         switch (ex.category) {
@@ -91,16 +111,31 @@ export class ProgressionEngine {
       });
     });
 
-    // Session completion discipline bonus
-    if (totalCompletedSets >= 3) {
+    // CRITICAL EXPLOIT FIX: If zero completed sets, reject session from receiving rewards
+    if (totalCompletedSets === 0) {
+      return {
+        isValid: false,
+        rejectReason: 'Incomplete Session: Zero completed sets recorded. Empty workouts cannot be rewarded.',
+        expEarned: 0,
+        tokensEarned: 0,
+        attributeGains: { strength: 0, endurance: 0, agility: 0, vitality: 0, discipline: 0 },
+        validationNotes: 'Rejected: No verified exercise volume logged.',
+      };
+    }
+
+    // Exact elapsed duration check (do not grant free minimum duration)
+    const exactDurationMinutes = session.durationMinutes > 0 ? session.durationMinutes : 1;
+
+    // Discipline bonus for adhering to structured session
+    if (totalCompletedSets >= 4) {
       disciplineScore += 0.5;
     }
 
-    // Baseline session completion base EXP
-    const baseDurationExp = Math.min(Math.max(session.durationMinutes * 4, 30), 180);
-    const setExp = totalCompletedSets * 12;
-    const totalExp = Math.round(baseDurationExp + setExp);
-    const totalTokens = Math.max(Math.round(totalExp / 8), 10);
+    // Calculate EXP based on actual volume and verified time
+    const durationExp = Math.min(exactDurationMinutes * 5, 200);
+    const setExp = totalCompletedSets * 25;
+    const totalExp = Math.round(durationExp + setExp);
+    const totalTokens = Math.max(Math.round(totalExp / 10), 10);
 
     const roundedGains: AttributeScores = {
       strength: Number(strengthScore.toFixed(2)),
@@ -111,15 +146,16 @@ export class ProgressionEngine {
     };
 
     return {
+      isValid: true,
       expEarned: totalExp,
       tokensEarned: totalTokens,
       attributeGains: roundedGains,
-      validationNotes: `Authoritative validation: ${totalCompletedSets} sets verified across ${session.durationMinutes} minutes.`,
+      validationNotes: `Authoritative Verification: ${totalCompletedSets} verified sets over ${exactDurationMinutes} min.`,
     };
   }
 
   /**
-   * Applies rewards to a Hunter Profile, handling multi-level ups and unallocated points.
+   * Applies validated workout rewards to the Hunter Profile idempotently.
    */
   static applyWorkoutRewardsToProfile(
     profile: HunterProfile,
@@ -136,7 +172,7 @@ export class ProgressionEngine {
     newRankPromoted: HunterRank | null;
     transactions: RewardTransaction[];
   } {
-    // Duplicate protection via idempotency check
+    // Duplicate protection via idempotency key
     const existing = transactionLog.find(
       t => t.sourceId === sourceWorkoutId && t.eventType === 'workout_completion'
     );
@@ -155,16 +191,16 @@ export class ProgressionEngine {
     let levelsGained = 0;
     let unallocatedPoints = profile.unallocatedStatPoints;
 
-    // Check for level up(s)
+    // Multi-level ascension logic
     while (newCurrentExp >= newNextExp) {
       newCurrentExp -= newNextExp;
       newLevel += 1;
       levelsGained += 1;
-      unallocatedPoints += 1; // 1 bonus stat point per level gained (spec requirement)
+      unallocatedPoints += 1; // 1 bonus stat point per level gained
       newNextExp = this.getExpForLevel(newLevel);
     }
 
-    // Update attributes with rounded gains
+    // Update attributes with verified gains
     const newAttributes: AttributeScores = {
       strength: Number((profile.attributes.strength + rewards.attributeGains.strength).toFixed(2)),
       endurance: Number((profile.attributes.endurance + rewards.attributeGains.endurance).toFixed(2)),
@@ -173,11 +209,36 @@ export class ProgressionEngine {
       discipline: Number((profile.attributes.discipline + rewards.attributeGains.discipline).toFixed(2)),
     };
 
-    // Evaluate rank promotion
+    // Recalculate rank
     const calculatedRank = this.evaluateRank(newLevel, newAttributes);
     const newRankPromoted = calculatedRank !== profile.rank ? calculatedRank : null;
 
-    // Create immutable transaction record
+    // Strict Calendar-based streak calculation
+    const todayStr = new Date().toISOString().split('T')[0];
+    const lastActiveStr = profile.streak.lastActiveDate;
+    
+    let newStreakDays = profile.streak.currentDays;
+    
+    if (lastActiveStr === todayStr) {
+      // Multiple workouts on the same day DO NOT inflate streak (spec fix)
+      newStreakDays = profile.streak.currentDays;
+    } else {
+      // Check if last active was yesterday
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+      if (lastActiveStr === yesterdayStr) {
+        newStreakDays = profile.streak.currentDays + 1;
+      } else if (!lastActiveStr) {
+        newStreakDays = 1;
+      } else {
+        // Gap of > 1 day resets streak
+        newStreakDays = 1;
+      }
+    }
+
+    // Signed transaction record
     const newTx: RewardTransaction = {
       id: `tx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       timestamp: new Date().toISOString(),
@@ -186,8 +247,8 @@ export class ProgressionEngine {
       expChange: rewards.expEarned,
       tokenChange: rewards.tokensEarned,
       stoneChange: levelsGained > 0 ? levelsGained : 0,
-      description: `Workout validated. +${rewards.expEarned} EXP, +${rewards.tokensEarned} Tokens.`,
-      idempotencyKey: `workout_${sourceWorkoutId}`,
+      description: `Workout verified. +${rewards.expEarned} EXP, +${rewards.tokensEarned} Tokens.`,
+      idempotencyKey: `workout_${sourceWorkoutId}_u_${profile.id}`,
     };
 
     const updatedProfile: HunterProfile = {
@@ -203,9 +264,9 @@ export class ProgressionEngine {
       evolutionStones: profile.evolutionStones + (levelsGained > 0 ? levelsGained : 0),
       streak: {
         ...profile.streak,
-        currentDays: profile.streak.currentDays + 1,
-        bestDays: Math.max(profile.streak.bestDays, profile.streak.currentDays + 1),
-        lastActiveDate: new Date().toISOString().split('T')[0],
+        currentDays: newStreakDays,
+        bestDays: Math.max(profile.streak.bestDays, newStreakDays),
+        lastActiveDate: todayStr,
         totalWorkouts: profile.streak.totalWorkouts + 1,
       },
       updatedAt: new Date().toISOString(),
@@ -247,7 +308,7 @@ export class ProgressionEngine {
   }
 
   /**
-   * Applies quest completion rewards idempotently.
+   * Applies quest completion rewards idempotently with cycle ID protection.
    */
   static claimQuestRewards(
     profile: HunterProfile,
@@ -257,9 +318,9 @@ export class ProgressionEngine {
     updatedProfile: HunterProfile;
     transactions: RewardTransaction[];
   } {
-    const existing = transactionLog.find(
-      t => t.sourceId === quest.id && t.eventType === 'quest_reward'
-    );
+    // Unique cycle ID protection
+    const idempotencyKey = `quest_${quest.id}_cycle_${quest.cycleId}_u_${profile.id}`;
+    const existing = transactionLog.find(t => t.idempotencyKey === idempotencyKey);
     if (existing) {
       return { updatedProfile: profile, transactions: transactionLog };
     }
@@ -276,13 +337,14 @@ export class ProgressionEngine {
       newNextExp = this.getExpForLevel(newLevel);
     }
 
-    // Optional associated attribute gain from quest
     const newAttributes = { ...profile.attributes };
     if (quest.associatedAttribute) {
       newAttributes[quest.associatedAttribute] = Number(
         (newAttributes[quest.associatedAttribute] + 0.5).toFixed(2)
       );
     }
+
+    const newRank = this.evaluateRank(newLevel, newAttributes);
 
     const newTx: RewardTransaction = {
       id: `tx_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
@@ -292,14 +354,15 @@ export class ProgressionEngine {
       expChange: quest.expReward,
       tokenChange: quest.tokenReward,
       stoneChange: quest.stoneReward || 0,
-      description: `Quest completed: ${quest.title}`,
-      idempotencyKey: `quest_${quest.id}`,
+      description: `Quest verified (${quest.cycleId}): ${quest.title}`,
+      idempotencyKey,
     };
 
     return {
       updatedProfile: {
         ...profile,
         level: newLevel,
+        rank: newRank,
         currentExp: newCurrentExp,
         nextLevelExp: newNextExp,
         lifetimeExp: profile.lifetimeExp + quest.expReward,

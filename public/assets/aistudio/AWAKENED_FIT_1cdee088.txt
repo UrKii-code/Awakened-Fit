@@ -1,0 +1,575 @@
+# AWAKENED FIT — MASTER APP IMPROVEMENT & DEVELOPMENT PROMPT
+
+Act as a senior full-stack developer, mobile app architect, UI/UX designer, fitness application specialist, database engineer, and RPG game systems designer.
+
+Your task is to transform my existing **Awakened Fit** project into a polished, reliable, secure, and scalable fitness RPG application.
+
+## 1. Understand the Existing Project First
+
+Before making any changes:
+
+1. Inspect the entire repository and understand its current architecture.
+2. Review all existing pages, components, services, progression systems, workout systems, and data structures.
+3. Identify bugs, incomplete functionality, security weaknesses, and inconsistent logic.
+4. Preserve existing working features wherever possible.
+5. Do not unnecessarily delete or rewrite existing code.
+6. Do not replace the current design with a completely different design.
+7. Create a clear implementation plan before making major architectural changes.
+
+The current project is a React, Vite, TypeScript, and Tailwind CSS web application. Treat it as the existing prototype and improve it incrementally.
+
+## 2. Main Vision
+
+Awakened Fit is a real-world fitness application inspired by the progression and hunter system of Solo Leveling.
+
+**Core concept:**
+
+"Train in real life. Grow as a hunter. Carry your progress into the game."
+
+Users complete real-world workouts to develop their hunter character.
+
+The application should combine:
+- Real-world fitness tracking.
+- Personalized workout programs.
+- Hunter levels and ranks.
+- Five character attributes.
+- Daily and weekly quests.
+- Achievements and rewards.
+- Character evolution and customization.
+- Future integration with a separate Unity RPG game.
+
+The fitness application must remain useful and complete even before the game exists.
+
+## 3. Preserve the Existing Visual Identity
+
+Maintain the existing dark fantasy, futuristic hunter interface.
+
+Design direction:
+- Background: `#071326`
+- Panel background: `#10264A`
+- Energy blue: `#267CFF`
+- Arcane purple: `#974DFF`
+- Glowing blue and purple accents.
+- Metallic borders.
+- Holographic panels.
+- Subtle animations and transitions.
+- Clear typography and readable information.
+
+Keep the existing Awakened Fit branding and A-shaped identity.
+
+Improve visual consistency, spacing, hierarchy, responsiveness, accessibility, and usability.
+
+The application should feel like a premium fitness RPG rather than a generic workout tracker.
+
+## 4. Fix Critical Existing Problems
+
+Prioritize the following issues discovered during the repository review.
+
+### A. Data Storage and Authentication
+
+The current application relies on browser localStorage.
+
+Improve this by planning and implementing a proper backend using Supabase.
+
+Requirements:
+- User registration and login.
+- Secure authentication.
+- Cloud-based profile storage.
+- Workout history synchronization.
+- Persistent progression and achievements.
+- Database backups and recovery considerations.
+- Row Level Security (RLS).
+- Proper user ownership of records.
+
+Keep local storage only for suitable temporary preferences or caching.
+
+Never expose service-role keys or other secrets in frontend code.
+
+### B. Secure Workout Rewards
+
+Currently, workout rewards are calculated in the browser.
+
+Move authoritative reward calculations to a trusted backend.
+
+Requirements:
+- Validate workout sessions on the server.
+- Reject invalid or empty workout sessions.
+- Prevent duplicate reward claims.
+- Prevent users from manipulating EXP through browser tools.
+- Record every progression change in an auditable transaction ledger.
+- Use unique event IDs for reward processing.
+- Make reward processing idempotent.
+
+A completed workout must not automatically receive rewards if no meaningful exercise was completed.
+
+Do not simply mark a workout as verified from the client.
+
+### C. Fix Workout Completion Exploits
+
+Review `WorkoutTrackerModal.tsx` and the workout completion flow.
+
+Fix the following:
+- Users must not earn EXP from zero completed sets.
+- Do not automatically assign a minimum workout duration to an incomplete session.
+- Validate completed exercises and workout duration.
+- Allow users to save unfinished workouts.
+- Allow users to resume an unfinished workout.
+- Prevent duplicate completion and reward submissions.
+
+### D. Fix Hunter Identity
+
+Remove hardcoded hunter identifiers such as `hunter_active`.
+
+Every workout, quest, reward, and progression record must belong to the authenticated user.
+
+### E. Fix Streak and Quest Logic
+
+Implement reliable calendar-based streak tracking.
+
+Requirements:
+- Multiple workouts on the same day must not increase the daily streak multiple times.
+- Rest days must not artificially inflate streaks.
+- Daily quests must reset according to the correct calendar cycle.
+- Weekly quests must reset according to the correct weekly cycle.
+- Each quest instance must have a unique cycle identifier.
+- Prevent duplicate quest reward claims.
+- Recalculate hunter rank when attribute or progression changes require it.
+
+### F. Fix Game Synchronization Security
+
+The current game synchronization token is not secure.
+
+Do not use Base64-encoded profile information as an authentication token.
+
+Prepare a secure integration architecture:
+- Server-issued credentials.
+- Short-lived access tokens.
+- Refresh-token rotation where appropriate.
+- Game-specific access scopes.
+- Read-only game access to fitness-derived progression.
+- Server-side validation.
+- Versioned character data.
+- Synchronization logs.
+
+The future Unity game must never be able to modify a user's original workout records or directly award EXP.
+
+### G. Fix Onboarding
+
+Improve the existing onboarding flow.
+
+Include:
+
+1. Gender.
+2. Age range:
+   - Under 18
+   - 18–24
+   - 25–34
+   - 35–44
+   - 45–59
+   - 60+
+3. Fitness experience:
+   - Beginner — new to exercise.
+   - Returning — restarting after a break.
+   - Intermediate — exercise regularly.
+   - Advanced — experienced with structured training.
+4. Fitness goals.
+5. Workout environment:
+   - Home.
+   - Gym.
+   - Both.
+6. Available equipment.
+7. Preferred workout days.
+8. Relevant exercise limitations and safety considerations.
+
+Do not assume an age range or gender for the user.
+
+For users under 18, apply age-appropriate guidance, safeguards, and privacy practices. Do not provide adult-oriented training assumptions.
+
+Do not require body photographs or sensitive measurements to use the application.
+
+## 5. Improve the Fitness System
+
+The fitness experience must be functional, safe, and personalized.
+
+### Workout Features
+- Personalized workout plans.
+- Home and gym workout options.
+- Exercise instructions.
+- Exercise demonstrations or media.
+- Sets and repetitions.
+- Weight tracking.
+- Rest timers.
+- Workout duration tracking.
+- Exercise substitutions.
+- Workout history.
+- Personal records.
+- Progress tracking.
+- Save and resume workouts.
+
+### Training Categories
+- Strength training.
+- Endurance training.
+- Running.
+- Cycling.
+- Sprint training.
+- Mobility and flexibility.
+- Recovery activities.
+
+Workout recommendations must consider fitness experience, goals, available equipment, and user limitations.
+
+Avoid encouraging excessive training, unsafe progression, or exercising through pain.
+
+Rest and recovery must be treated as important parts of fitness.
+
+## 6. Improve the Hunter Progression System
+
+Preserve the five existing attributes:
+
+| Attribute | Meaning |
+|---|---|
+| Strength | Physical strength and resistance training |
+| Endurance | Cardiovascular capacity and sustained activity |
+| Agility | Speed, mobility, and movement |
+| Vitality | Recovery and physical resilience |
+| Discipline | Consistency and healthy training habits |
+
+Each attribute begins with a baseline value of 10.
+
+Progression should come from meaningful real-world activity.
+
+Example attribute mapping:
+
+- Strength training → Strength, secondary Vitality.
+- Running → Endurance, secondary Agility.
+- Cycling → Endurance, secondary Vitality.
+- Sprint training → Agility, secondary Endurance.
+- Mobility → Agility, secondary Vitality.
+- Consistency → Discipline.
+
+Do not award fixed EXP for every repetition regardless of workload.
+
+Use sensible activity-based calculations, reasonable limits, and server-side validation.
+
+### Level System
+
+Use a configurable progression formula.
+
+Provisional formula:
+
+`EXP_next = 1000 + 250 × (Level - 1)`
+
+Allow the progression formula to be adjusted without rewriting the entire application.
+
+### Stat Points
+
+- Grant one bonus stat point per level.
+- Let users allocate available points manually.
+- Record all allocations.
+- Prevent spending more points than available.
+- Display attribute changes immediately after successful server confirmation.
+
+### Hunter Ranks
+
+Preserve the following ranks:
+
+E → D → C → B → A → S
+
+Provisional level requirements:
+
+| Rank | Minimum Level |
+|---|---:|
+| E | 1 |
+| D | 5 |
+| C | 15 |
+| B | 30 |
+| A | 50 |
+| S | 75 |
+
+Level alone should not automatically guarantee a higher rank.
+
+Use achievements and appropriate progression criteria as additional requirements.
+
+Make rank rules configurable.
+
+## 7. Improve Quests, Achievements, and Rewards
+
+Build a reliable quest and reward system.
+
+Include:
+- Daily quests.
+- Weekly quests.
+- Fitness challenges.
+- Milestone achievements.
+- Consistency achievements.
+- Personal record achievements.
+- Level-up rewards.
+- Rank-up rewards.
+- Cosmetic rewards.
+- Titles and badges.
+
+Requirements:
+- Show quest progress.
+- Show completion status.
+- Show available rewards.
+- Prevent duplicate claims.
+- Track reward history.
+- Use unique quest-cycle IDs.
+- Ensure all reward changes are processed securely.
+
+Rewards should encourage sustainable fitness habits, not excessive exercise.
+
+## 8. Character System and Future Evolution
+
+Keep character data separate from character appearance.
+
+The system should support future 2D and 3D character representations.
+
+Potential evolution paths:
+
+- Berserker — Strength-focused.
+- Phantom — Agility-focused.
+- Guardian — Vitality and Endurance-focused.
+- Arcane — Balanced and Discipline-focused.
+
+Character evolution should be influenced by long-term progression and meaningful achievements.
+
+Prepare support for:
+- Character levels.
+- Hunter ranks.
+- Attributes.
+- Skills.
+- Titles.
+- Cosmetics.
+- Equipment appearance.
+- Evolution paths.
+- Unlockable forms.
+
+Do not build a full Unity game at this stage. Prepare the data architecture so the game can connect later.
+
+## 9. Improve the Application Interface
+
+Review and improve these main areas:
+
+### Home Dashboard
+Display:
+- Hunter level and rank.
+- EXP progress.
+- Character attributes.
+- Daily quest progress.
+- Workout summary.
+- Current streak.
+- Recommended next workout.
+
+### Training
+Display:
+- Workout plans.
+- Exercise library.
+- Training categories.
+- Workout history.
+- Personal records.
+
+### Hunter Status
+Display:
+- Character information.
+- Attributes.
+- Available stat points.
+- Rank progression.
+- Achievements.
+- Evolution information.
+
+### Quest Board
+Display:
+- Daily quests.
+- Weekly quests.
+- Challenges.
+- Rewards.
+- Completion history.
+
+### Progress Dashboard
+Display:
+- Workout frequency.
+- Training volume.
+- Activity trends.
+- Attribute progression.
+- Personal records.
+- Consistency trends.
+
+Keep screens responsive and usable on mobile and desktop.
+
+Remove accessibility restrictions such as `user-scalable=no` from the viewport configuration.
+
+## 10. Recommended Technical Architecture
+
+Keep the current React/Vite application working during the prototype improvement stage.
+
+Plan for the following production architecture:
+
+**Mobile application**
+- React Native.
+- Expo.
+- TypeScript.
+- Expo Router.
+
+**Backend**
+- Supabase.
+- PostgreSQL.
+- Supabase Auth.
+- Supabase Storage.
+- Row Level Security.
+- Edge Functions for trusted progression operations.
+
+**Frontend data management**
+- TanStack Query.
+- Zustand where appropriate.
+- React Hook Form.
+- Zod validation.
+
+**Future game**
+- Unity.
+- Shared backend.
+- Secure game API.
+- Character and progression synchronization.
+
+Do not migrate the entire project to React Native without first assessing the cost and preserving existing functionality.
+
+## 11. Database Preparation
+
+Design a clean, normalized database that can support:
+
+- Users and hunter profiles.
+- Preferences and fitness goals.
+- Exercises and exercise media.
+- Workout plans.
+- Workout sessions.
+- Workout sets.
+- Personal records.
+- Hunter attributes.
+- Progression ledger.
+- Level history.
+- Rank history.
+- Stat point transactions.
+- Quests and quest progress.
+- Achievements.
+- Rewards and inventory.
+- Character evolution.
+- Character cosmetics.
+- Game accounts.
+- Game synchronization events.
+
+Use appropriate foreign keys, indexes, constraints, timestamps, and RLS policies.
+
+Never allow users to read or modify another user's private records.
+
+## 12. Testing and Reliability
+
+Implement appropriate testing.
+
+Test:
+- Authentication.
+- Onboarding.
+- Workout creation.
+- Workout completion.
+- Empty workout rejection.
+- EXP calculation.
+- Level-up logic.
+- Attribute allocation.
+- Rank calculation.
+- Quest resets.
+- Reward claims.
+- Streak calculation.
+- Data synchronization.
+- Authorization and RLS.
+
+Handle loading states, empty states, network failures, and server errors.
+
+Do not silently fail or display fake success messages.
+
+## 13. Development Rules
+
+Follow these rules throughout implementation:
+
+1. Work on the existing project, not a completely unrelated replacement.
+2. Inspect files before modifying them.
+3. Fix critical bugs before adding unnecessary features.
+4. Keep components reusable and maintainable.
+5. Use TypeScript types properly.
+6. Avoid duplicated business logic.
+7. Keep sensitive operations on the backend.
+8. Do not hardcode user IDs, tokens, or personal data.
+9. Never use mock data as if it were real user data.
+10. Do not claim a feature works unless it has actually been implemented and tested.
+11. Do not remove existing features without explaining why.
+12. Keep the visual identity consistent.
+13. Build in small, testable phases.
+14. Document important architectural decisions.
+15. If a required external service or credential is missing, explain what is needed rather than pretending it is connected.
+
+## 14. Implementation Priority
+
+Follow this order:
+
+**Phase 1 — Stabilize Existing App**
+- Audit the repository.
+- Fix workout exploits.
+- Fix streak and quest logic.
+- Fix progression inconsistencies.
+- Fix hardcoded user identifiers.
+- Improve onboarding.
+- Fix accessibility issues.
+
+**Phase 2 — Backend and Data**
+- Set up Supabase.
+- Design database schema.
+- Implement authentication.
+- Add RLS policies.
+- Migrate user data safely.
+- Move progression calculations to trusted backend functions.
+
+**Phase 3 — Fitness Experience**
+- Improve workout tracking.
+- Add personalized workout plans.
+- Add exercise substitutions.
+- Add workout history and analytics.
+- Improve recovery and safety guidance.
+
+**Phase 4 — RPG Progression**
+- Improve hunter attributes.
+- Implement secure EXP and level calculations.
+- Improve ranks.
+- Implement stat allocation.
+- Improve quests and achievements.
+- Add character evolution.
+
+**Phase 5 — Production Preparation**
+- Improve responsive design.
+- Add automated tests.
+- Improve error handling.
+- Add monitoring.
+- Prepare mobile architecture.
+
+**Phase 6 — Future Unity Integration**
+- Design game API.
+- Implement secure game authentication.
+- Synchronize character progression.
+- Prepare character data for 2D and 3D rendering.
+
+## 15. Final Expected Result
+
+Transform Awakened Fit into a reliable fitness RPG platform with:
+
+- A polished hunter-themed interface.
+- Secure user accounts.
+- Cloud-saved data.
+- Personalized fitness plans.
+- Reliable workout tracking.
+- Secure hunter progression.
+- Five meaningful attributes.
+- E-to-S hunter ranks.
+- Daily and weekly quests.
+- Achievements and rewards.
+- Character evolution.
+- A foundation for future Unity game integration.
+
+**Most important instruction: Do not rush to add more flashy RPG features while the core fitness and progression systems remain unreliable. Build a stable, secure, and genuinely useful fitness application first.**
+
+Start by auditing the existing repository, then implement Phase 1. Show the files you intend to modify, explain the changes, and test each important feature before moving to the next phase.

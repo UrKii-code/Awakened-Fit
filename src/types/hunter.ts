@@ -49,15 +49,35 @@ export interface AttributeDetail {
   description: string;
 }
 
+export type HunterGender = 'male' | 'female' | 'non_binary' | 'prefer_not_to_say';
+
+export type HunterAgeRange = 
+  | 'under_18' 
+  | '18_24' 
+  | '25_34' 
+  | '35_44' 
+  | '45_59' 
+  | '60_plus';
+
+export type HunterExperience = 
+  | 'beginner'    // New to exercise
+  | 'returning'   // Restarting after a break
+  | 'intermediate'// Exercise regularly
+  | 'advanced';   // Experienced with structured training
+
+export type TrainingEnvironmentChoice = 'home' | 'gym' | 'both';
+
 export interface HunterOnboardingData {
   hunterName: string;
+  gender: HunterGender;
   archetype: HunterArchetype;
-  ageRange: string;
-  fitnessExperience: 'beginner' | 'intermediate' | 'advanced' | 'veteran';
+  ageRange: HunterAgeRange;
+  isMinorUnder18: boolean;
+  fitnessExperience: HunterExperience;
   currentActivityLevel: 'sedentary' | 'lightly_active' | 'moderately_active' | 'very_active';
   primaryGoal: 'build_strength' | 'boost_endurance' | 'lose_fat' | 'athletic_agility' | 'overall_health';
   secondaryGoals: string[];
-  trainingEnvironment: 'home' | 'commercial_gym' | 'hybrid' | 'outdoors';
+  trainingEnvironment: TrainingEnvironmentChoice;
   availableEquipment: string[];
   trainingDaysPerWeek: number;
   preferredDurationMinutes: number;
@@ -83,9 +103,10 @@ export interface HunterProfile {
   streak: {
     currentDays: number;
     bestDays: number;
-    lastActiveDate: string;
+    lastActiveDate: string; // YYYY-MM-DD
     totalWorkouts: number;
     restDaysTaken: number;
+    lastRestDate?: string; // YYYY-MM-DD
   };
   onboarding: HunterOnboardingData;
   isAwakened: boolean;
@@ -152,12 +173,22 @@ export interface WorkoutSession {
   startedAt: string;
   completedAt?: string;
   durationMinutes: number;
+  elapsedSeconds?: number;
   expEarned: number;
   attributeGains: Partial<AttributeScores>;
   tokensEarned: number;
   validationNotes: string;
   isPersonalRecord: boolean;
   verified: boolean;
+  isDraft?: boolean;
+  lastPausedAt?: string;
+}
+
+export interface DraftWorkoutState {
+  session: WorkoutSession;
+  elapsedSeconds: number;
+  activeExerciseIndex: number;
+  lastSavedAt: string;
 }
 
 export type QuestType = 'daily' | 'weekly' | 'special';
@@ -168,6 +199,7 @@ export interface Quest {
   description: string;
   type: QuestType;
   category: ExerciseCategory | 'consistency' | 'milestone';
+  cycleId: string; // e.g. "daily-2026-11-09" or "weekly-2026-W46"
   targetCount: number;
   currentCount: number;
   isCompleted: boolean;
@@ -203,24 +235,79 @@ export interface RewardTransaction {
   idempotencyKey: string;
 }
 
-export interface GameSyncPayload {
-  version: string;
-  generatedAt: string;
-  account: {
-    hunterId: string;
-    hunterName: string;
-    title: string;
-    archetype: HunterArchetype;
-    rank: HunterRank;
-    level: number;
-    lifetimeExp: number;
-    tokens: number;
-    evolutionStones: number;
+export interface BodyWeightEntry {
+  id: string;
+  hunterId: string;
+  date: string; // YYYY-MM-DD
+  weightKg: number;
+  weightLbs: number;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface BodyMetricsProfile {
+  heightCm?: number;
+  currentWeightKg?: number;
+  targetWeightKg?: number;
+  preferredUnit: 'metric' | 'imperial';
+}
+
+export interface FitnessGuild {
+  id: string;
+  name: string;
+  tagline: string;
+  focus: string;
+  memberCount: number;
+  isJoined: boolean;
+  weeklyGoalDesc: string;
+  weeklyGoalCurrent: number;
+  weeklyGoalTarget: number;
+  accentColor: string;
+}
+
+export interface CommunityActivityPost {
+  id: string;
+  hunterName: string;
+  hunterRank: HunterRank;
+  workoutTitle: string;
+  durationMinutes: number;
+  verifiedSets: number;
+  expEarned: number;
+  timestamp: string;
+  kudosCount: number;
+  hasKudoed: boolean;
+  reflection?: string;
+}
+
+export interface LeaderboardEntry {
+  rankPosition: number;
+  hunterId: string;
+  hunterName: string;
+  hunterRank: HunterRank;
+  activeDaysThisMonth: number;
+  consistentSets: number;
+  streakDays: number;
+  isCurrentUser: boolean;
+}
+
+export interface InAppNotification {
+  id: string;
+  title: string;
+  message: string;
+  type: 'workout_reminder' | 'quest_reset' | 'achievement_unlocked' | 'rank_promotion' | 'community_challenge';
+  timestamp: string;
+  isRead: boolean;
+}
+
+export interface UserPreferences {
+  units: 'metric' | 'imperial';
+  defaultRestSeconds: number;
+  profileVisibility: 'public' | 'friends' | 'private';
+  shareWorkoutsToCommunity: boolean;
+  notificationsEnabled: {
+    workoutReminders: boolean;
+    questResets: boolean;
+    achievementAlerts: boolean;
+    communityAnnouncements: boolean;
   };
-  attributes: AttributeScores;
-  achievements: {
-    totalUnlocked: number;
-    unlockedIds: string[];
-  };
-  gameIntegrationToken: string;
 }

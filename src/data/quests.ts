@@ -1,5 +1,17 @@
 import { Quest, Achievement } from '../types/hunter';
 
+export function getTodayCycleId(): string {
+  return `daily-${new Date().toISOString().split('T')[0]}`;
+}
+
+export function getCurrentWeekCycleId(): string {
+  const now = new Date();
+  const startOfYear = new Date(now.getFullYear(), 0, 1);
+  const pastDaysOfYear = (now.getTime() - startOfYear.getTime()) / 86400000;
+  const weekNum = Math.ceil((pastDaysOfYear + startOfYear.getDay() + 1) / 7);
+  return `weekly-${now.getFullYear()}-W${weekNum}`;
+}
+
 export const INITIAL_DAILY_QUESTS: Quest[] = [
   {
     id: 'quest_daily_workout',
@@ -7,6 +19,7 @@ export const INITIAL_DAILY_QUESTS: Quest[] = [
     description: 'Execute your scheduled training session to maintain physical momentum and Hunter discipline.',
     type: 'daily',
     category: 'strength',
+    cycleId: getTodayCycleId(),
     targetCount: 1,
     currentCount: 0,
     isCompleted: false,
@@ -22,6 +35,7 @@ export const INITIAL_DAILY_QUESTS: Quest[] = [
     description: 'Accumulate at least 6 validated training sets across any recognized movement category.',
     type: 'daily',
     category: 'bodyweight',
+    cycleId: getTodayCycleId(),
     targetCount: 6,
     currentCount: 0,
     isCompleted: false,
@@ -37,6 +51,7 @@ export const INITIAL_DAILY_QUESTS: Quest[] = [
     description: 'Perform at least 5 minutes of targeted mobility stretching or record a designated rest day.',
     type: 'daily',
     category: 'recovery',
+    cycleId: getTodayCycleId(),
     targetCount: 1,
     currentCount: 0,
     isCompleted: false,
@@ -55,6 +70,7 @@ export const INITIAL_WEEKLY_QUESTS: Quest[] = [
     description: 'Complete 3 planned training sessions within the weekly cycle to anchor baseline conditioning.',
     type: 'weekly',
     category: 'consistency',
+    cycleId: getCurrentWeekCycleId(),
     targetCount: 3,
     currentCount: 0,
     isCompleted: false,
@@ -71,6 +87,7 @@ export const INITIAL_WEEKLY_QUESTS: Quest[] = [
     description: 'Log 75 minutes of genuine workout effort (strength, cardio, or mobility).',
     type: 'weekly',
     category: 'cardio',
+    cycleId: getCurrentWeekCycleId(),
     targetCount: 75,
     currentCount: 0,
     isCompleted: false,

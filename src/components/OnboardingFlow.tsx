@@ -2,7 +2,11 @@ import React, { useState } from 'react';
 import { 
   HunterProfile, 
   HunterArchetype, 
-  HunterOnboardingData 
+  HunterOnboardingData,
+  HunterGender,
+  HunterAgeRange,
+  HunterExperience,
+  TrainingEnvironmentChoice
 } from '../types/hunter';
 import { ARCHETYPES } from '../data/ranks';
 import { BrandLogo } from './BrandLogo';
@@ -18,7 +22,9 @@ import {
   HeartHandshake, 
   Flame, 
   Zap, 
-  Shield 
+  Shield,
+  UserCheck,
+  AlertCircle 
 } from 'lucide-react';
 
 interface OnboardingFlowProps {
@@ -32,13 +38,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
 
   // Form state
   const [hunterName, setHunterName] = useState<string>('');
+  const [gender, setGender] = useState<HunterGender>('prefer_not_to_say');
   const [archetype, setArchetype] = useState<HunterArchetype>('berserker');
-  const [ageRange, setAgeRange] = useState<string>('25-34');
-  const [fitnessExperience, setFitnessExperience] = useState<'beginner' | 'intermediate' | 'advanced' | 'veteran'>('beginner');
+  const [ageRange, setAgeRange] = useState<HunterAgeRange>('25_34');
+  const [fitnessExperience, setFitnessExperience] = useState<HunterExperience>('beginner');
   const [activityLevel, setActivityLevel] = useState<'sedentary' | 'lightly_active' | 'moderately_active' | 'very_active'>('lightly_active');
   const [primaryGoal, setPrimaryGoal] = useState<'build_strength' | 'boost_endurance' | 'lose_fat' | 'athletic_agility' | 'overall_health'>('build_strength');
   const [secondaryGoals, setSecondaryGoals] = useState<string[]>(['overall_health']);
-  const [environment, setEnvironment] = useState<'home' | 'commercial_gym' | 'hybrid' | 'outdoors'>('home');
+  const [environment, setEnvironment] = useState<TrainingEnvironmentChoice>('both');
   const [equipment, setEquipment] = useState<string[]>(['Bodyweight']);
   const [daysPerWeek, setDaysPerWeek] = useState<number>(3);
   const [durationMinutes, setDurationMinutes] = useState<number>(30);
@@ -93,11 +100,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
 
     setTimeout(() => {
       const selectedArch = ARCHETYPES[archetype];
+      const isMinor = ageRange === 'under_18';
       
       const onboardingData: HunterOnboardingData = {
         hunterName: hunterName.trim() || 'Shadow Hunter',
+        gender,
         archetype,
         ageRange,
+        isMinorUnder18: isMinor,
         fitnessExperience,
         currentActivityLevel: activityLevel,
         primaryGoal,
@@ -119,14 +129,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
       };
 
       const newProfile: HunterProfile = {
-        id: `hunter_${Date.now()}`,
+        id: `hunter_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
         name: hunterName.trim() || 'Shadow Hunter',
         title: selectedArch.title,
         archetype,
         rank: 'E',
         level: 1,
         currentExp: 0,
-        nextLevelExp: 150,
+        nextLevelExp: 1000, // Master spec provisional formula: 1000 + 250 * (Level - 1)
         lifetimeExp: 0,
         unallocatedStatPoints: 1, // 1 starting stat point for awakening!
         attributes: baseAttributes,
@@ -187,7 +197,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
             </h2>
 
             <p className="text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
-              In this realm, words mean nothing without sweat. Every rep, sprint, and deliberate recovery in the real world directly expands your Hunter attributes, unlocks legendary ranks, and equips your avatar.
+              In this realm, physical effort drives character growth. Every rep, run, and deliberate recovery in the real world develops your persistent Hunter attributes, unlocks legendary ranks, and equips your avatar.
             </p>
 
             <div className="p-4 rounded-xl bg-slate-900/80 border border-slate-800 text-left text-xs text-slate-400 space-y-2 max-w-md mx-auto">
@@ -200,24 +210,24 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
               </div>
               <div className="flex items-start gap-2">
                 <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
-                <span>Rest & recovery days are honored as sacred discipline—never penalized.</span>
+                <span>Rest & recovery days are honored as discipline—never penalized.</span>
               </div>
               <div className="flex items-start gap-2">
                 <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
-                <span>Your Hunter data is private, secure, and ready to carry into the game.</span>
+                <span>Zero body photos or sensitive biometric disclosures required.</span>
               </div>
             </div>
           </div>
         )}
 
-        {/* STEP 2: Hunter Name & Identity */}
+        {/* STEP 2: Hunter Name & Gender Identity */}
         {step === 2 && (
           <div className="space-y-4 animate-fade-in">
             <h3 className="text-xl font-bold font-['Cinzel',serif] text-cyan-200">
-              Name Your Hunter
+              Hunter Identity & Designation
             </h3>
             <p className="text-xs text-slate-400">
-              Choose the designation that will be engraved into your Hunter Registry and shared with the standalone game client.
+              Choose your public codename and personal identity preferences.
             </p>
 
             <div className="space-y-2 pt-2">
@@ -234,8 +244,31 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
               />
             </div>
 
-            <div className="text-xs text-slate-500 italic">
-              Rank E candidates typically retain their title as &quot;Newly Awakened&quot; until Level 5.
+            <div className="space-y-2 pt-2">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 font-['Rajdhani',sans-serif]">
+                Gender Identity (Master Spec 4.G)
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { id: 'male', label: 'Male' },
+                  { id: 'female', label: 'Female' },
+                  { id: 'non_binary', label: 'Non-Binary' },
+                  { id: 'prefer_not_to_say', label: 'Prefer not to say' },
+                ].map(opt => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setGender(opt.id as any)}
+                    className={`p-2.5 rounded-xl border text-xs font-medium cursor-pointer transition ${
+                      gender === opt.id
+                        ? 'bg-slate-900 border-cyan-400 text-cyan-300 ring-1 ring-cyan-400'
+                        : 'bg-slate-900/40 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -314,7 +347,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
 
             <div className="space-y-2.5 pt-1">
               {[
-                { id: 'build_strength', label: 'Raw Strength & Muscle Density', desc: 'Focus on progressive resistance, heavy bodyweight & barbell power.', icon: <Dumbbell className="w-4 h-4 text-amber-400" /> },
+                { id: 'build_strength', label: 'Raw Strength & Resistance Mastery', desc: 'Focus on progressive resistance, heavy bodyweight & barbell power.', icon: <Dumbbell className="w-4 h-4 text-amber-400" /> },
                 { id: 'boost_endurance', label: 'Cardio & Stamina Engine', desc: 'Develop high-volume cardiovascular resilience, tempo running & cycling.', icon: <Zap className="w-4 h-4 text-sky-400" /> },
                 { id: 'athletic_agility', label: 'Speed, Agility & Explosive Power', desc: 'Sprints, plyometrics, calisthenics control, and rapid interval bursts.', icon: <Flame className="w-4 h-4 text-emerald-400" /> },
                 { id: 'overall_health', label: 'Functional Longevity & Vitality', desc: 'Balanced full-body mobility, joint resilience, and consistent wellness.', icon: <Shield className="w-4 h-4 text-purple-400" /> },
@@ -345,23 +378,64 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
           </div>
         )}
 
-        {/* STEP 5: Experience & Current Activity */}
+        {/* STEP 5: Age Range & Experience (Exact Spec 4.G) */}
         {step === 5 && (
           <div className="space-y-5 animate-fade-in">
             <h3 className="text-xl font-bold font-['Cinzel',serif] text-cyan-200">
-              Physical Baseline
+              Age Range & Experience Tiers
             </h3>
             
+            {/* Age Range Grid */}
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 font-['Rajdhani',sans-serif]">
-                Fitness Experience
+                Age Category
               </label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                 {[
-                  { id: 'beginner', title: 'Beginner', desc: '0 - 6 months' },
-                  { id: 'intermediate', title: 'Intermediate', desc: '6m - 2 years' },
-                  { id: 'advanced', title: 'Advanced', desc: '2 - 5 years' },
-                  { id: 'veteran', title: 'Veteran Athlete', desc: '5+ years' },
+                  { id: 'under_18', label: 'Under 18' },
+                  { id: '18_24', label: '18–24' },
+                  { id: '25_34', label: '25–34' },
+                  { id: '35_44', label: '35–44' },
+                  { id: '45_59', label: '45–59' },
+                  { id: '60_plus', label: '60+' },
+                ].map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => setAgeRange(a.id as any)}
+                    className={`p-2.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                      ageRange === a.id
+                        ? 'bg-slate-900 border-cyan-400 text-cyan-300 ring-1 ring-cyan-400'
+                        : 'bg-slate-900/40 border-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {a.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Minor Safeguard Notice */}
+              {ageRange === 'under_18' && (
+                <div className="p-3 rounded-xl bg-sky-950/40 border border-sky-600/40 text-[11px] text-sky-200 flex items-start gap-2 animate-fade-in mt-1">
+                  <AlertCircle className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Junior Hunter Safeguard Activated:</strong> Workouts focus on athletic coordination, bodyweight progression, cardiovascular health, and tissue mobility. High-load maximal spinal loading is automatically excluded.
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Fitness Experience Grid */}
+            <div className="space-y-2 pt-1">
+              <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 font-['Rajdhani',sans-serif]">
+                Fitness Experience (Master Spec 4.G)
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {[
+                  { id: 'beginner', title: 'Beginner', desc: 'New to exercise' },
+                  { id: 'returning', title: 'Returning', desc: 'Restarting after a break' },
+                  { id: 'intermediate', title: 'Intermediate', desc: 'Exercise regularly' },
+                  { id: 'advanced', title: 'Advanced', desc: 'Experienced with structured training' },
                 ].map((exp) => (
                   <button
                     key={exp.id}
@@ -374,34 +448,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
                     }`}
                   >
                     <div className="font-bold text-xs">{exp.title}</div>
-                    <div className="text-[10px] text-slate-500">{exp.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 font-['Rajdhani',sans-serif]">
-                Current Daily Activity
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { id: 'sedentary', label: 'Desk Job / Sedentary' },
-                  { id: 'lightly_active', label: 'Light (1-2 walks/wk)' },
-                  { id: 'moderately_active', label: 'Moderate (Active daily)' },
-                  { id: 'very_active', label: 'Heavy Labor / Athletic' },
-                ].map((act) => (
-                  <button
-                    key={act.id}
-                    type="button"
-                    onClick={() => setActivityLevel(act.id as any)}
-                    className={`p-2.5 rounded-xl border text-left text-xs font-medium cursor-pointer transition ${
-                      activityLevel === act.id
-                        ? 'bg-slate-900 border-cyan-400 text-cyan-300 ring-1 ring-cyan-400'
-                        : 'bg-slate-900/40 border-slate-800 text-slate-400'
-                    }`}
-                  >
-                    {act.label}
+                    <div className="text-[10px] text-slate-400">{exp.desc}</div>
                   </button>
                 ))}
               </div>
@@ -409,7 +456,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
           </div>
         )}
 
-        {/* STEP 6: Environment & Equipment */}
+        {/* STEP 6: Environment & Equipment (Home / Gym / Both) */}
         {step === 6 && (
           <div className="space-y-4 animate-fade-in">
             <h3 className="text-xl font-bold font-['Cinzel',serif] text-cyan-200">
@@ -418,13 +465,13 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
 
             <div className="space-y-2">
               <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 font-['Rajdhani',sans-serif]">
-                Where will you train?
+                Workout Environment (Master Spec 4.G)
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {[
                   { id: 'home', label: 'Home', icon: <Home className="w-3.5 h-3.5" /> },
-                  { id: 'commercial_gym', label: 'Gym', icon: <Building2 className="w-3.5 h-3.5" /> },
-                  { id: 'hybrid', label: 'Hybrid', icon: <Dumbbell className="w-3.5 h-3.5" /> },
+                  { id: 'gym', label: 'Gym', icon: <Building2 className="w-3.5 h-3.5" /> },
+                  { id: 'both', label: 'Both', icon: <Dumbbell className="w-3.5 h-3.5" /> },
                 ].map((env) => (
                   <button
                     key={env.id}
